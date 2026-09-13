@@ -12,6 +12,7 @@ import { VirtualPiano } from './components/PianoRoll/VirtualPiano';
 import { ExportModal } from './components/Modals/ExportModal';
 import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 import { DonateModal } from './components/Modals/DonateModal';
+import { TemplatesModal } from './components/Modals/TemplatesModal';
 import {
   loadThemePreference,
   saveThemePreference,
@@ -19,7 +20,7 @@ import {
   saveNamingPreference,
 } from './utils/storage';
 import { NamingConvention, Pitch, Step, Accidental, Clef } from './types/music';
-import { pitchToMidi } from './constants/pitches';
+import { pitchToMidi, KEY_SIGNATURE_DATA } from './constants/pitches';
 
 export default function App() {
   const {
@@ -73,6 +74,8 @@ export default function App() {
 
   // Layout & Navigation State
   const [activeTab, setActiveTab] = useState<SidebarTab>('editor');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
 
   // Theme & Naming Preferences
   const [theme, setTheme] = useState<'dark' | 'light'>(() => loadThemePreference());
@@ -86,6 +89,7 @@ export default function App() {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
 
   // Sync theme with HTML root class
   useEffect(() => {
@@ -179,16 +183,17 @@ export default function App() {
   });
 
   const primaryClef: Clef = score.staves[0]?.clef || 'treble';
+  const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#0c0d12] dark:bg-[#0c0d12] text-slate-100 font-sans">
-      {/* 1. Left Sidebar Navigation (Matching reference design) */}
+    <div className="flex h-screen w-screen overflow-hidden bg-[#f1f3f7] dark:bg-[#0c0d12] text-slate-900 dark:text-slate-100 font-sans transition-colors">
+      {/* 1. Left Sidebar Navigation (Matching reference design with full light/dark support) */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={(tab) => {
           setActiveTab(tab);
           if (tab === 'templates') {
-            // Focus or scroll to examples
+            setIsTemplatesOpen(true);
           }
         }}
         theme={theme}
@@ -199,13 +204,16 @@ export default function App() {
         onToggleShowNoteNames={() => setShowNoteNames((prev) => !prev)}
         isPianoCollapsed={isPianoCollapsed}
         onTogglePiano={() => setIsPianoCollapsed((prev) => !prev)}
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenDonate={() => setIsDonateOpen(true)}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
 
       {/* 2. Main Central Studio Deck */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#0f1117] dark:bg-[#0f1117]">
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#f8fafc] dark:bg-[#0f1117] transition-colors">
         {/* Top Navbar / Greeting Header */}
         <Navbar
           score={score}
@@ -224,20 +232,22 @@ export default function App() {
           volume={volume}
           onSetVolume={setVolume}
           onLoadTemplate={loadTemplate}
+          onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
+          onToggleInspector={() => setIsInspectorCollapsed((prev) => !prev)}
         />
 
         {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
-        <div className="px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="px-4 sm:px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
           {/* Card 1: Amber Pastel Card - Métrica & Tonalidad */}
           <StatCard
             variant="amber"
             title="Estructura Musical"
             countLabel={`${score.timeSignature.beats}/${score.timeSignature.beatType}`}
-            subtitle="Métrica & Armadura"
-            value={`${score.timeSignature.beats}/${score.timeSignature.beatType} • ${score.keySignature} Mayor`}
+            subtitle="Métrica & Tonalidad"
+            value={keyLabel}
             detail={`Clave de ${primaryClef === 'treble' ? 'Sol' : primaryClef === 'bass' ? 'Fa' : 'Do'}`}
-            actionTitle="Cambiar compás / tonalidad en el inspector"
-            onAction={() => {}}
+            actionTitle="Ver y modificar en el inspector"
+            onAction={() => setIsInspectorCollapsed(false)}
           />
 
           {/* Card 2: Purple / Lavender Pastel Card - Instrumento & Tempo */}
@@ -256,7 +266,7 @@ export default function App() {
                 : 'Flauta'
             }
             detail={`${playbackState.isPlaying ? 'Reproduciendo en vivo' : 'En pausa (Espacio)'}`}
-            actionTitle="Reproducir / Pausar"
+            actionTitle="Reproducir / Pausar (Espacio)"
             onAction={togglePlay}
           />
 
@@ -274,18 +284,27 @@ export default function App() {
         </div>
 
         {/* Center Stage: Card container for Score Canvas + Modern Toolbar */}
-        <div className="flex-1 px-6 pb-4 flex flex-col min-h-0">
-          <div className="flex-1 flex flex-col bg-[#161922] rounded-2xl border border-[#232836] shadow-xl overflow-hidden min-h-[450px]">
-            {/* Embedded Toolbar for Note Durations & Accidentals */}
+        <div className="flex-1 px-4 sm:px-6 pb-4 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col bg-white dark:bg-[#161922] rounded-2xl border border-slate-200 dark:border-[#232836] shadow-md overflow-hidden min-h-[450px] transition-colors">
+            {/* Embedded Toolbar for Note Durations & Accidentals with full reactive selection updates */}
             <Toolbar
               activeDuration={activeDuration}
-              onSelectDuration={setActiveDuration}
+              onSelectDuration={(dur) => {
+                setActiveDuration(dur);
+                if (selectedItemId) changeSelectedDuration(dur);
+              }}
               isRestMode={isRestMode}
               onToggleRestMode={() => setIsRestMode((prev) => !prev)}
               activeAccidental={activeAccidental}
-              onSelectAccidental={setActiveAccidental}
+              onSelectAccidental={(acc) => {
+                setActiveAccidental(acc);
+                if (selectedItemId) setSelectedAccidental(acc);
+              }}
               isDotted={isDotted}
-              onToggleDot={() => setIsDotted((prev) => !prev)}
+              onToggleDot={() => {
+                setIsDotted((prev) => !prev);
+                if (selectedItemId) toggleSelectedDot();
+              }}
             />
 
             {/* Interactive Vector Score Canvas */}
@@ -321,7 +340,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* 3. Right Inspector Column (Matching stacked dark cards with pill CTAs) */}
+      {/* 3. Right Inspector Column (Collapsible & Responsive with stacked cards) */}
       <ScoreInspector
         score={score}
         selectedMeasureIdx={selectedMeasureIdx}
@@ -342,6 +361,8 @@ export default function App() {
         onUndo={undo}
         onRedo={redo}
         onOpenExport={() => setIsExportOpen(true)}
+        isCollapsed={isInspectorCollapsed}
+        onToggleCollapse={() => setIsInspectorCollapsed((prev) => !prev)}
       />
 
       {/* Dialog Modals */}
@@ -357,6 +378,12 @@ export default function App() {
             score: importedScore,
           });
         }}
+      />
+
+      <TemplatesModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        onLoadTemplate={loadTemplate}
       />
 
       <ShortcutsModal

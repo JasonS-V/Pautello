@@ -8,10 +8,13 @@ import {
   FolderOpen,
   Edit2,
   Clock,
+  Menu,
+  PanelRight,
 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
 import { InstrumentType } from '../../audio/synth';
+import { KEY_SIGNATURE_DATA } from '../../constants/pitches';
 
 interface NavbarProps {
   score: Score;
@@ -30,6 +33,8 @@ interface NavbarProps {
   volume: number;
   onSetVolume: (vol: number) => void;
   onLoadTemplate: (template: ScoreTemplate) => void;
+  onOpenMobileMenu?: () => void;
+  onToggleInspector?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,36 +54,53 @@ export const Navbar: React.FC<NavbarProps> = ({
   volume,
   onSetVolume,
   onLoadTemplate,
+  onOpenMobileMenu,
+  onToggleInspector,
 }) => {
-  return (
-    <header className="px-6 py-4 flex flex-wrap items-center justify-between gap-4 select-none bg-transparent">
-      {/* Title & Greeting style (inspired by "Hello, Daniel" from reference image) */}
-      <div className="flex flex-col">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={score.title}
-            onChange={(e) => onUpdateTitle(e.target.value)}
-            className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-2 py-0.5 rounded-lg outline-none transition-colors border border-transparent focus:border-[#f59e0b] tracking-tight max-w-[320px] sm:max-w-[450px]"
-            placeholder="Título de la Obra"
-            title="Haz clic para renombrar la partitura"
-          />
-          <Edit2 className="w-3.5 h-3.5 text-slate-400 opacity-60 pointer-events-none" />
-        </div>
+  const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
-        <div className="flex items-center gap-2 px-2 text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-          <input
-            type="text"
-            value={score.composer}
-            onChange={(e) => onUpdateComposer(e.target.value)}
-            className="bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-1 rounded outline-none transition-colors border border-transparent focus:border-[#f59e0b] text-[11px]"
-            placeholder="Compositor / Arreglista"
-            title="Haz clic para cambiar el compositor"
-          />
-          <span>•</span>
-          <span className="text-[#f59e0b] font-semibold">{score.keySignature} Mayor</span>
-          <span>•</span>
-          <span>{score.timeSignature.beats}/{score.timeSignature.beatType}</span>
+  return (
+    <header className="px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 select-none bg-transparent">
+      {/* Title & Greeting style (inspired by "Hello, Daniel" from reference image) */}
+      <div className="flex items-center gap-3">
+        {/* Mobile Hamburger Button */}
+        {onOpenMobileMenu && (
+          <button
+            onClick={onOpenMobileMenu}
+            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#1f2330] transition-colors"
+            title="Abrir menú"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={score.title}
+              onChange={(e) => onUpdateTitle(e.target.value)}
+              className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-2 py-0.5 rounded-lg outline-none transition-colors border border-transparent focus:border-[#f59e0b] tracking-tight max-w-[200px] sm:max-w-[400px]"
+              placeholder="Título de la Obra"
+              title="Haz clic para renombrar la partitura"
+            />
+            <Edit2 className="w-3.5 h-3.5 text-slate-400 opacity-60 pointer-events-none" />
+          </div>
+
+          <div className="flex items-center gap-2 px-2 text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+            <input
+              type="text"
+              value={score.composer}
+              onChange={(e) => onUpdateComposer(e.target.value)}
+              className="bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-1 rounded outline-none transition-colors border border-transparent focus:border-[#f59e0b] text-[11px]"
+              placeholder="Compositor / Arreglista"
+              title="Haz clic para cambiar el compositor"
+            />
+            <span>•</span>
+            <span className="text-amber-600 dark:text-[#f59e0b] font-semibold">{keyLabel}</span>
+            <span>•</span>
+            <span>{score.timeSignature.beats}/{score.timeSignature.beatType}</span>
+          </div>
         </div>
       </div>
 
@@ -118,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={onToggleLoop}
             className={`p-2 rounded-xl transition-colors ${
               isLooping
-                ? 'bg-[#c4b5fd]/30 text-[#8b5cf6] font-bold'
+                ? 'bg-purple-100 dark:bg-[#c4b5fd]/30 text-purple-700 dark:text-[#8b5cf6] font-bold'
                 : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330]'
             }`}
             title="Repetir en bucle continuo"
@@ -131,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={onToggleMetronome}
             className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 font-semibold transition-colors ${
               metronomeEnabled
-                ? 'bg-[#bef264] text-lime-950 font-bold'
+                ? 'bg-lime-200 dark:bg-[#bef264] text-lime-900 dark:text-lime-950 font-bold'
                 : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330]'
             }`}
             title="Metrónomo auditivo"
@@ -191,7 +213,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
             title="Cargar obras de ejemplo clásicas"
           >
-            <FolderOpen className="w-3.5 h-3.5 text-[#fed7aa]" />
+            <FolderOpen className="w-3.5 h-3.5 text-amber-500 dark:text-[#fed7aa]" />
             <span>Ejemplos</span>
           </button>
           <div className="hidden group-hover:block absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-[#161922] border border-slate-200 dark:border-[#232836] rounded-2xl shadow-xl z-50 p-2 space-y-1">
@@ -212,6 +234,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Inspector Toggle Button */}
+        {onToggleInspector && (
+          <button
+            onClick={onToggleInspector}
+            className="p-2 rounded-2xl bg-white dark:bg-[#161922] border border-slate-200 dark:border-[#232836] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white shadow-xs transition-colors"
+            title="Mostrar / Ocultar panel inspector"
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </header>
   );

@@ -83,14 +83,18 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
     if (keyData.type === '#') {
       const sharpStepsTreble = [0, 3, -1, 2, 5, 1, 4]; // F5, C5, G5, D5, A4, E5, B4
       const sharpStepsBass = [2, 5, 1, 4, 7, 3, 6];
-      const sourceSteps = clef === 'bass' ? sharpStepsBass : sharpStepsTreble;
+      const sharpStepsAlto = [-1, 2, 5, 1, 4, 0, 3];
+      const sourceSteps =
+        clef === 'bass' ? sharpStepsBass : clef === 'alto' ? sharpStepsAlto : sharpStepsTreble;
       for (let i = 0; i < keyData.accidentals; i++) {
         offsets.push({ step: sourceSteps[i], type: '#' });
       }
     } else if (keyData.type === 'b') {
       const flatStepsTreble = [4, 1, 5, 2, 6, 3, 7]; // B4, E5, A4, D5, G4, C5, F4
       const flatStepsBass = [6, 3, 7, 4, 8, 5, 9];
-      const sourceSteps = clef === 'bass' ? flatStepsBass : flatStepsTreble;
+      const flatStepsAlto = [3, 0, 4, 1, 5, 2, 6];
+      const sourceSteps =
+        clef === 'bass' ? flatStepsBass : clef === 'alto' ? flatStepsAlto : flatStepsTreble;
       for (let i = 0; i < keyData.accidentals; i++) {
         offsets.push({ step: sourceSteps[i], type: 'b' });
       }
@@ -212,7 +216,11 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                 {/* Clef Glyph */}
                 <g
                   transform={`translate(8, ${
-                    primaryStaff.clef === 'bass' ? staffTopOffset - 2 : staffTopOffset - 8
+                    primaryStaff.clef === 'bass'
+                      ? staffTopOffset - 2
+                      : primaryStaff.clef === 'alto'
+                      ? staffTopOffset
+                      : staffTopOffset - 8
                   }) scale(0.72)`}
                   className="text-slate-900 dark:text-slate-100"
                 >
@@ -220,6 +228,8 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                     d={
                       primaryStaff.clef === 'bass'
                         ? SVG_PATHS.bassClef
+                        : primaryStaff.clef === 'alto'
+                        ? SVG_PATHS.altoClef
                         : SVG_PATHS.trebleClef
                     }
                     fill="currentColor"
@@ -435,7 +445,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                 cy={noteY}
                                 r="13"
                                 fill="none"
-                                stroke="#2563eb"
+                                stroke="#f59e0b"
                                 strokeWidth="2.5"
                                 className="animate-pulse"
                               />
