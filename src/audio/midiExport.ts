@@ -1,0 +1,122 @@
+import { Score } from '../types/music';
+import { getItemBeats, pitchToMidi } from '../constants/pitches';
+
+export function writeVariableLength(value: number): number[] {
+  let buffer = value & 0x7f;
+  const bytes: number[] = [buffer];
+  while ((value >>= 7) > 0) {
+    buffer = (value & 0x7f) | 0x80;
+    bytes.unshift(buffer);
+  }
+  return bytes;
+}
+
+function writeString(str: string): number[] {
+  const bytes: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    bytes.push(str.charCodeAt(i));
+  }
+  return bytes;
+}
+
+function write32Bit(val: number): number[] {
+  return [
+    (val >> 24) & 0xff,
+    (val >> 16) & 0xff,
+    (val >> 8) & 0xff,
+    val & 0xff,
+  ];
+}
+
+function write16Bit(val: number): number[] {
+  return [(val >> 8) & 0xff, val & 0xff];
+}
+
+/**
+ * Exports a Score to a standard MIDI format 0 (.mid) binary Blob
+ */
+export function exportScoreToMidi(score: Score): Blob {
+  const ticksPerQuarter = 480;
+  const bpm = Math.max(30, Math.min(300, score.tempo || 120));
+  const microsecondsPerQuarter = Math.round(60000000 / bpm);
+
+  const trackEvents: number[] = [];
+
+  // Track Name event
+  const trackNameBytes = writeString(score.title || 'Partitura');
+  trackEvents.push(0x00, 0xff, 0x03, trackNameBytes.length, ...trackNameBytes);
+
+  // Set Tempo event: FF 51 03 tt tt tt
+  trackEvents.push(
+    0x00,
+    0xff,
+    0x51,
+    0x03,
+    (microsecondsPerQuarter >> 16) & 0xff,
+    (microsecondsPerQuarter >> 8) & 0xff,
+    microsecondsPerQuarter & 0xff
+  );
+
+  // Time Signature event: FF 58 04 nn dd cc bb
+  const nn = score.timeSignature.beats;
+  const dd = Math.round(Math.log2(score.timeSignature.beatType));
+  trackEvents.push(0x00, 0xff, 0x58, 0x04, nn, dd, 24, 8);
+
+  // Program change to Acoustic Grand Piano (channel 0, program 0)
+  trackEvents.push(0x00, 0xc0, 0x00);
+
+  // Collect notes
+  let deltaAccumulator = 0;
+  const primaryStaff = score.staves[0];
+
+  if (primaryStaff) {
+    for (const measure of primaryStaff.measures) {
+      for (const item of measure.items) {
+        const itemBeats = getItemBeats(item.duration, item.isDotted);
+        const itemTicks = Math.round(itemBeats * ticksPerQuarter);
+
+        if (item.type === 'note' && item.pitch) {
+          const midiPitch = pitchToMidi(item.pitch);
+          const velocity = item.articulation === 'accent' ? 120 : 96;
+
+          // Note ON
+          trackEvents.push(...writeVariableLength(deltaAccumulator));
+          trackEvents.push(0x90, midiPitch, velocity);
+
+          // Note OFF duration
+          const noteDurationTicks = item.articulation === 'staccato' ? Math.round(itemTicks * 0.5) : itemTicks - 10;
+          const restAfterTicks = itemTicks - noteDurationTicks;
+
+          trackEvents.push(...writeVariableLength(noteDurationTicks));
+          trackEvents.push(0x80, midiPitch, 0x00);
+
+          deltaAccumulator = restAfterTicks;
+        } else {
+          // Rest: just accumulate delta time
+          deltaAccumulator += itemTicks;
+        }
+      }
+    }
+  }
+
+  // End of Track event: FF 2F 00
+  trackEvents.push(...writeVariableLength(deltaAccumulator));
+  trackEvents.push(0xff, 0x2f, 0x00);
+
+  // Construct MIDI file
+  const header = [
+    0x4d, 0x54, 0x68, 0x64, // 'MThd'
+    0x00, 0x00, 0x00, 0x06, // Header length (6 bytes)
+    0x00, 0x00,             // Format 0 (single track)
+    0x00, 0x01,             // 1 track
+    ...write16Bit(ticksPerQuarter)
+  ];
+
+  const trackHeader = [
+    0x4d, 0x54, 0x72, 0x6b, // 'MTrk'
+    ...write32Bit(trackEvents.length)
+  ];
+
+  const fileBytes = new Uint8Array([...header, ...trackHeader, ...trackEvents]);
+  return new Blob([fileBytes], { type: 'audio/midi' });
+}

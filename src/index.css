@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Print Stylesheet for High Definition Vector Sheet Music */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  header,
+  nav,
+  button,
+  .no-print,
+  #piano-container,
+  .measure-hotspot,
+  .fixed,
+  [role="dialog"] {
+    display: none !important;
+  }
+  .score-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: white !important;
+    color: black !important;
+  }
+  svg text {
+    fill: black !important;
+  }
+  svg line {
+    stroke: black !important;
+  }
+  svg path {
+    color: black !important;
+  }
+}
