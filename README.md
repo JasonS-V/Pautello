@@ -62,26 +62,26 @@
 
 ## 🚀 Instalación y Ejecución Local
 
-1. Asegúrate de tener instalado **Node.js** (v18 o superior).
+1. Asegúrate de tener instalados **Node.js** (v18 o superior) y **pnpm** (`npm i -g pnpm`).
 2. Clona o descarga este repositorio en tu equipo.
 3. Instala las dependencias:
    ```bash
-   npm install
+   pnpm install
    ```
 4. Inicia el servidor de desarrollo:
    ```bash
-   npm run dev
+   pnpm dev
    ```
 5. Abre en tu navegador la dirección indicada (por defecto `http://localhost:3000`).
 
 ### Ejecución de Pruebas Unitarias
 ```bash
-npm run test
+pnpm test
 ```
 
 ### Construcción para Producción
 ```bash
-npm run build
+pnpm build
 ```
 
 ---
