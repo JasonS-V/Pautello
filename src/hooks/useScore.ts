@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Score, ScoreItem, Pitch, NoteDuration, Accidental, Clef, KeySignature, TimeSignature } from '../types/music';
+import { Score, ScoreItem, Pitch, Step, NoteDuration, Accidental, Clef, KeySignature, TimeSignature } from '../types/music';
 import { TEMPLATES, ScoreTemplate } from '../constants/templates';
 import { loadScoreFromStorage, saveScoreToStorage } from '../utils/storage';
 import { audioEngine } from '../audio/synth';
@@ -335,6 +335,44 @@ export function useScore() {
     });
   }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
 
+  const updateSelectedLyric = useCallback((lyric: string) => {
+    if (!selectedItemId) return;
+    setScore(prev => {
+      const newScore = JSON.parse(JSON.stringify(prev)) as Score;
+      const staff = newScore.staves[0];
+      if (!staff) return prev;
+
+      const measure = staff.measures[selectedMeasureIdx];
+      if (!measure) return prev;
+
+      const item = measure.items.find(it => it.id === selectedItemId);
+      if (item) {
+        item.lyric = lyric.trim() ? lyric : undefined;
+      }
+      return newScore;
+    });
+  }, [selectedItemId, selectedMeasureIdx]);
+
+  const updateSelectedStep = useCallback((step: Step) => {
+    if (!selectedItemId) return;
+    pushHistory(score);
+    setScore(prev => {
+      const newScore = JSON.parse(JSON.stringify(prev)) as Score;
+      const staff = newScore.staves[0];
+      if (!staff) return prev;
+
+      const measure = staff.measures[selectedMeasureIdx];
+      if (!measure) return prev;
+
+      const item = measure.items.find(it => it.id === selectedItemId);
+      if (item && item.type === 'note' && item.pitch) {
+        item.pitch.step = step;
+        audioEngine.playMidi(pitchToMidi(item.pitch), 0.35);
+      }
+      return newScore;
+    });
+  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+
   const addMeasure = useCallback(() => {
     pushHistory(score);
     setScore(prev => {
@@ -435,6 +473,8 @@ export function useScore() {
     changeSelectedDuration,
     toggleSelectedDot,
     setSelectedAccidental,
+    updateSelectedLyric,
+    updateSelectedStep,
     addMeasure,
     deleteMeasure,
     updateTitle,

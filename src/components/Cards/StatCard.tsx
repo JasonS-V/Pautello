@@ -12,6 +12,7 @@ interface StatCardProps {
   detail?: string;
   actionTitle?: string;
   onAction?: () => void;
+  onCardClick?: () => void;
 }
 
 const variantStyles: Record<StatCardVariant, {
@@ -65,12 +66,13 @@ export const StatCard: React.FC<StatCardProps> = ({
   detail,
   actionTitle = 'Ver más',
   onAction,
+  onCardClick,
 }) => {
   const styles = variantStyles[variant];
 
   return (
     <div
-      onClick={onAction}
+      onClick={() => (onCardClick ? onCardClick() : onAction?.())}
       className={`${styles.bg} rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer select-none group min-h-[125px]`}
     >
       {/* Subtle organic wavy background pattern watermark */}

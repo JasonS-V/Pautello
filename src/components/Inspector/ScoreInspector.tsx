@@ -11,9 +11,11 @@ import {
   Undo,
   Redo,
   ChevronRight,
+  Type,
+  RotateCcw,
 } from 'lucide-react';
-import { Score, ScoreItem, Clef, TimeSignature, KeySignature, NamingConvention } from '../../types/music';
-import { formatPitchName, pitchToFrequency } from '../../constants/pitches';
+import { Score, ScoreItem, Clef, TimeSignature, KeySignature, NamingConvention, Step, NoteDuration, Accidental } from '../../types/music';
+import { formatPitchName, pitchToFrequency, LATIN_STEP_NAMES } from '../../constants/pitches';
 
 interface ScoreInspectorProps {
   score: Score;
@@ -30,6 +32,12 @@ interface ScoreInspectorProps {
   onDeleteMeasure: () => void;
   onDeleteSelected: () => void;
   onTransposeSelected: (semitones: number) => void;
+  onChangeDuration: (duration: NoteDuration) => void;
+  onToggleDot: () => void;
+  onSetAccidental: (acc: Accidental) => void;
+  onUpdateLyric: (lyric: string) => void;
+  onUpdateStep: (step: Step) => void;
+  onClearScore: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -54,6 +62,12 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   onDeleteMeasure,
   onDeleteSelected,
   onTransposeSelected,
+  onChangeDuration,
+  onToggleDot,
+  onSetAccidental,
+  onUpdateLyric,
+  onUpdateStep,
+  onClearScore,
   canUndo,
   canRedo,
   onUndo,
@@ -72,25 +86,26 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
       ) || null;
   }
 
-  const durationLabels: Record<string, string> = {
-    w: 'Redonda (4 tiempos)',
-    h: 'Blanca (2 tiempos)',
-    q: 'Negra (1 tiempo)',
-    '8': 'Corchea (1/2 tiempo)',
-    '16': 'Semicorchea (1/4 tiempo)',
-    '32': 'Fusa (1/8 tiempo)',
-  };
+  const durationOptions: { key: NoteDuration; symbol: string; label: string }[] = [
+    { key: 'w', symbol: '𝅝', label: 'Redonda' },
+    { key: 'h', symbol: '𝅗𝅥', label: 'Blanca' },
+    { key: 'q', symbol: '𝅘𝅥', label: 'Negra' },
+    { key: '8', symbol: '𝅘𝅥𝅮', label: 'Corchea' },
+    { key: '16', symbol: '𝅘𝅥𝅯', label: 'Semicorchea' },
+  ];
+
+  const diatonicSteps: Step[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 
   if (isCollapsed) {
     return (
       <aside
         id="inspector-container"
-        className="w-12 bg-white dark:bg-[#111319] border-l border-slate-200 dark:border-[#202433] py-4 flex flex-col items-center justify-between select-none shrink-0"
+        className="w-12 bg-white dark:bg-[#111319] border-l border-slate-200 dark:border-[#202433] py-4 flex flex-col items-center justify-between select-none shrink-0 transition-colors"
       >
         <button
           onClick={onToggleCollapse}
           className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330] transition-colors"
-          title="Expandir inspector"
+          title="Expandir panel inspector"
         >
           <ChevronRight className="w-5 h-5 rotate-180" />
         </button>
@@ -101,7 +116,7 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   return (
     <aside
       id="inspector-container"
-      className="w-80 bg-white dark:bg-[#111319] border-l border-slate-200 dark:border-[#202433] p-4 flex flex-col gap-3.5 select-none shrink-0 overflow-y-auto"
+      className="w-80 bg-white dark:bg-[#111319] border-l border-slate-200 dark:border-[#202433] p-4 flex flex-col gap-3.5 select-none shrink-0 overflow-y-auto transition-colors"
     >
       {/* Header with Undo / Redo */}
       <div className="flex items-center justify-between px-1 pb-1">
@@ -137,7 +152,7 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
         </div>
       </div>
 
-      {/* Card 1: Elemento Seleccionado (Styled after reference image's card 1) */}
+      {/* Card 1: Elemento Seleccionado con Edición Completa */}
       <div className="bg-slate-50 dark:bg-[#161922] rounded-2xl p-4 border border-slate-200 dark:border-[#232836] transition-all shadow-xs">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-bold text-slate-900 dark:text-white tracking-tight">
@@ -153,8 +168,9 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
         </div>
 
         {selectedItem && selectedItem.type === 'note' && selectedItem.pitch ? (
-          <div>
-            <div className="flex items-baseline justify-between mb-1.5">
+          <div className="space-y-3">
+            {/* Pitch & Frequency */}
+            <div className="flex items-baseline justify-between">
               <span className="text-xl font-black text-amber-600 dark:text-[#fed7aa]">
                 {formatPitchName(selectedItem.pitch, namingConvention)}
               </span>
@@ -163,54 +179,206 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
               </span>
             </div>
 
-            <div className="text-[11px] text-slate-600 dark:text-slate-400 mb-3.5 space-y-0.5">
-              <div>
-                Duración:{' '}
-                <span className="text-slate-900 dark:text-slate-200 font-medium">
-                  {durationLabels[selectedItem.duration] || selectedItem.duration}
-                </span>
-                {selectedItem.isDotted && (
-                  <span className="text-amber-600 dark:text-[#fed7aa] ml-1 font-bold">
-                    • Con Puntillo
-                  </span>
-                )}
+            {/* Quick Diatonic Pitch Step Pills (Do, Re, Mi, Fa, Sol, La, Si) */}
+            <div>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Altura Diatónica:
+              </span>
+              <div className="flex items-center gap-1">
+                {diatonicSteps.map((step) => {
+                  const isCurrentStep = selectedItem?.pitch?.step === step;
+                  const label = namingConvention === 'latin' ? LATIN_STEP_NAMES[step] : step;
+                  return (
+                    <button
+                      key={step}
+                      onClick={() => onUpdateStep(step)}
+                      className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        isCurrentStep
+                          ? 'bg-[#fed7aa] text-amber-950 shadow-xs ring-1 ring-amber-400'
+                          : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2a3044]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Action pill buttons from reference design (amber/coral/lime pills) */}
-            <div className="flex items-center gap-1.5 pt-1">
-              <button
-                onClick={() => onTransposeSelected(1)}
-                className="flex-1 py-1.5 px-2 bg-[#fed7aa] hover:bg-[#fcd34d] text-amber-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95 shadow-xs"
-                title="Subir un semitono (+1)"
-              >
-                <ArrowUp className="w-3 h-3 stroke-[2.5]" />
-                <span>+1 Semi</span>
-              </button>
+            {/* Duration Selector for Selected Note */}
+            <div>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Duración de la Figura:
+              </span>
+              <div className="flex items-center gap-1">
+                {durationOptions.map((d) => (
+                  <button
+                    key={d.key}
+                    onClick={() => onChangeDuration(d.key)}
+                    className={`flex-1 py-1 rounded-lg text-xs transition-all flex flex-col items-center ${
+                      selectedItem?.duration === d.key
+                        ? 'bg-[#bef264] text-lime-950 font-bold shadow-xs'
+                        : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2a3044]'
+                    }`}
+                    title={d.label}
+                  >
+                    <span className="text-sm leading-none">{d.symbol}</span>
+                  </button>
+                ))}
 
-              <button
-                onClick={() => onTransposeSelected(-1)}
-                className="flex-1 py-1.5 px-2 bg-[#c4b5fd] hover:bg-[#a78bfa] text-purple-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95 shadow-xs"
-                title="Bajar un semitono (-1)"
-              >
-                <ArrowDown className="w-3 h-3 stroke-[2.5]" />
-                <span>-1 Semi</span>
-              </button>
-
-              <button
-                onClick={onDeleteSelected}
-                className="p-1.5 bg-[#fca5a5] hover:bg-[#f87171] text-red-950 font-bold rounded-xl transition-transform active:scale-95 shadow-xs"
-                title="Eliminar elemento seleccionado (Supr)"
-              >
-                <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-              </button>
+                {/* Dot Toggle */}
+                <button
+                  onClick={onToggleDot}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    selectedItem?.isDotted
+                      ? 'bg-[#c4b5fd] text-purple-950 shadow-xs'
+                      : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2a3044]'
+                  }`}
+                  title="Puntillo (+50%)"
+                >
+                  • Punt.
+                </button>
+              </div>
             </div>
+
+            {/* Accidental Selector for Selected Note */}
+            <div>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Alteración:
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onSetAccidental(null)}
+                  className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                    !selectedItem?.pitch?.accidental
+                      ? 'bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-white font-bold'
+                      : 'bg-white dark:bg-[#111319] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2a3044]'
+                  }`}
+                >
+                  Natural
+                </button>
+                <button
+                  onClick={() => onSetAccidental('#')}
+                  className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                    selectedItem?.pitch?.accidental === '#'
+                      ? 'bg-[#fed7aa] text-amber-950 font-bold'
+                      : 'bg-white dark:bg-[#111319] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2a3044]'
+                  }`}
+                >
+                  ♯ Sostenido
+                </button>
+                <button
+                  onClick={() => onSetAccidental('b')}
+                  className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                    selectedItem?.pitch?.accidental === 'b'
+                      ? 'bg-[#c4b5fd] text-purple-950 font-bold'
+                      : 'bg-white dark:bg-[#111319] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2a3044]'
+                  }`}
+                >
+                  ♭ Bemol
+                </button>
+              </div>
+            </div>
+
+            {/* Transposition Actions (Semitones & Octaves) */}
+            <div>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Transporte:
+              </span>
+              <div className="grid grid-cols-4 gap-1">
+                <button
+                  onClick={() => onTransposeSelected(1)}
+                  className="py-1 px-1.5 bg-[#fed7aa] hover:bg-[#fcd34d] text-amber-950 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95 shadow-xs"
+                  title="Subir un semitono (+1)"
+                >
+                  <ArrowUp className="w-2.5 h-2.5 stroke-[2.5]" />
+                  <span>+1 Semi</span>
+                </button>
+
+                <button
+                  onClick={() => onTransposeSelected(-1)}
+                  className="py-1 px-1.5 bg-[#c4b5fd] hover:bg-[#a78bfa] text-purple-950 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95 shadow-xs"
+                  title="Bajar un semitono (-1)"
+                >
+                  <ArrowDown className="w-2.5 h-2.5 stroke-[2.5]" />
+                  <span>-1 Semi</span>
+                </button>
+
+                <button
+                  onClick={() => onTransposeSelected(12)}
+                  className="py-1 px-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-[#202534] dark:hover:bg-[#282f42] text-slate-800 dark:text-slate-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Subir 1 octava (+12 semitonos)"
+                >
+                  <ArrowUp className="w-2.5 h-2.5" />
+                  <span>+8va</span>
+                </button>
+
+                <button
+                  onClick={() => onTransposeSelected(-12)}
+                  className="py-1 px-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-[#202534] dark:hover:bg-[#282f42] text-slate-800 dark:text-slate-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Bajar 1 octava (-12 semitonos)"
+                >
+                  <ArrowDown className="w-2.5 h-2.5" />
+                  <span>-8va</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Song Lyric / Syllable Input for Note */}
+            <div>
+              <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-medium mb-1">
+                <Type className="w-3 h-3" />
+                <span>Letra de la canción (Lírica):</span>
+              </div>
+              <input
+                type="text"
+                value={selectedItem.lyric || ''}
+                onChange={(e) => onUpdateLyric(e.target.value)}
+                placeholder="Ej: Glo- o ria"
+                className="w-full bg-white dark:bg-[#111319] border border-slate-200 dark:border-[#2a3044] rounded-lg px-2.5 py-1 text-xs text-slate-900 dark:text-white outline-none focus:border-[#f59e0b] transition-colors"
+                title="Escribe la sílaba o palabra asociada a esta nota"
+              />
+            </div>
+
+            {/* Delete button */}
+            <button
+              onClick={onDeleteSelected}
+              className="w-full py-1.5 px-2 bg-[#fca5a5] hover:bg-[#f87171] text-red-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95 shadow-xs"
+              title="Eliminar nota seleccionada (Supr)"
+            >
+              <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Eliminar Nota</span>
+            </button>
           </div>
         ) : selectedItem && selectedItem.type === 'rest' ? (
-          <div>
-            <div className="text-sm font-bold text-amber-600 dark:text-[#fed7aa] mb-2.5">
-              Silencio de {durationLabels[selectedItem.duration] || selectedItem.duration}
+          <div className="space-y-3">
+            <div className="text-sm font-bold text-amber-600 dark:text-[#fed7aa]">
+              Silencio de {selectedItem.duration === 'w' ? 'Redonda' : selectedItem.duration === 'h' ? 'Blanca' : selectedItem.duration === 'q' ? 'Negra' : selectedItem.duration === '8' ? 'Corchea' : 'Semicorchea'}
             </div>
+
+            {/* Duration Selector for Selected Rest */}
+            <div>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Cambiar Valor del Silencio:
+              </span>
+              <div className="flex items-center gap-1">
+                {durationOptions.map((d) => (
+                  <button
+                    key={d.key}
+                    onClick={() => onChangeDuration(d.key)}
+                    className={`flex-1 py-1 rounded-lg text-xs transition-all flex flex-col items-center ${
+                      selectedItem?.duration === d.key
+                        ? 'bg-[#fed7aa] text-amber-950 font-bold shadow-xs'
+                        : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2a3044]'
+                    }`}
+                    title={d.label}
+                  >
+                    <span className="text-sm leading-none">{d.symbol}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               onClick={onDeleteSelected}
               className="w-full py-1.5 px-2 bg-[#fca5a5] hover:bg-[#f87171] text-red-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95"
@@ -220,8 +388,8 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
             </button>
           </div>
         ) : (
-          <div className="py-4 text-center text-xs text-slate-500 dark:text-slate-400">
-            Haz clic en una nota o compás para ver detalles, alterar o transportar.
+          <div className="py-4 text-center text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Haz clic en una nota o compás para ver opciones de altura, duración, letra y transporte.
           </div>
         )}
       </div>
@@ -311,6 +479,22 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
             title="Eliminar el último compás"
           >
             - Eliminar
+          </button>
+        </div>
+
+        {/* Reset / Clear Score button */}
+        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-[#232836]">
+          <button
+            onClick={() => {
+              if (window.confirm('¿Deseas reiniciar la partitura con un lienzo en blanco?')) {
+                onClearScore();
+              }
+            }}
+            className="w-full py-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white flex items-center justify-center gap-1 rounded-lg hover:bg-slate-100 dark:hover:bg-[#1f2330] transition-colors"
+            title="Reiniciar con una partitura en blanco"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Nueva Partitura en Blanco</span>
           </button>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { ExportModal } from './components/Modals/ExportModal';
 import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 import { DonateModal } from './components/Modals/DonateModal';
 import { TemplatesModal } from './components/Modals/TemplatesModal';
+import { MixerModal } from './components/Modals/MixerModal';
 import {
   loadThemePreference,
   saveThemePreference,
@@ -43,6 +44,8 @@ export default function App() {
     changeSelectedDuration,
     toggleSelectedDot,
     setSelectedAccidental,
+    updateSelectedLyric,
+    updateSelectedStep,
     addMeasure,
     deleteMeasure,
     updateTitle,
@@ -52,6 +55,7 @@ export default function App() {
     updateKeySignature,
     updateClef,
     loadTemplate,
+    clearScore,
     undo,
     redo,
     canUndo,
@@ -90,6 +94,7 @@ export default function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
+  const [isMixerOpen, setIsMixerOpen] = useState<boolean>(false);
 
   // Sync theme with HTML root class
   useEffect(() => {
@@ -194,6 +199,8 @@ export default function App() {
           setActiveTab(tab);
           if (tab === 'templates') {
             setIsTemplatesOpen(true);
+          } else if (tab === 'mixer') {
+            setIsMixerOpen(true);
           }
         }}
         theme={theme}
@@ -205,6 +212,7 @@ export default function App() {
         isPianoCollapsed={isPianoCollapsed}
         onTogglePiano={() => setIsPianoCollapsed((prev) => !prev)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onOpenMixer={() => setIsMixerOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenDonate={() => setIsDonateOpen(true)}
@@ -247,6 +255,7 @@ export default function App() {
             value={keyLabel}
             detail={`Clave de ${primaryClef === 'treble' ? 'Sol' : primaryClef === 'bass' ? 'Fa' : 'Do'}`}
             actionTitle="Ver y modificar en el inspector"
+            onCardClick={() => setIsInspectorCollapsed(false)}
             onAction={() => setIsInspectorCollapsed(false)}
           />
 
@@ -267,6 +276,7 @@ export default function App() {
             }
             detail={`${playbackState.isPlaying ? 'Reproduciendo en vivo' : 'En pausa (Espacio)'}`}
             actionTitle="Reproducir / Pausar (Espacio)"
+            onCardClick={() => setIsMixerOpen(true)}
             onAction={togglePlay}
           />
 
@@ -356,6 +366,12 @@ export default function App() {
         onDeleteMeasure={() => deleteMeasure(selectedMeasureIdx)}
         onDeleteSelected={deleteSelected}
         onTransposeSelected={transposeSelected}
+        onChangeDuration={changeSelectedDuration}
+        onToggleDot={toggleSelectedDot}
+        onSetAccidental={setSelectedAccidental}
+        onUpdateLyric={updateSelectedLyric}
+        onUpdateStep={updateSelectedStep}
+        onClearScore={clearScore}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
@@ -384,6 +400,19 @@ export default function App() {
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
         onLoadTemplate={loadTemplate}
+      />
+
+      <MixerModal
+        isOpen={isMixerOpen}
+        onClose={() => setIsMixerOpen(false)}
+        instrument={instrument}
+        onSetInstrument={setInstrument}
+        volume={volume}
+        onSetVolume={setVolume}
+        tempo={score.tempo}
+        onSetTempo={updateTempo}
+        metronomeEnabled={metronomeEnabled}
+        onToggleMetronome={toggleMetronome}
       />
 
       <ShortcutsModal

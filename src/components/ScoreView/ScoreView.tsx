@@ -611,11 +611,19 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                               />
                             )}
 
-                            {/* Pedagogical Note Label (Do-Re-Mi or C-D-E) */}
+                            {/* Pedagogical Note Label (Do-Re-Mi or C-D-E) - Avoid collision with lyrics beneath staff */}
                             {showNoteNames && (
                               <text
                                 x="0"
-                                y={stemUp ? noteY + 16 : noteY - 13}
+                                y={
+                                  item.lyric || noteY >= 80
+                                    ? stemUp && item.duration !== 'w'
+                                      ? noteY - 36
+                                      : noteY - 14
+                                    : stemUp
+                                    ? noteY + 16
+                                    : noteY - 14
+                                }
                                 textAnchor="middle"
                                 className="text-[10px] font-bold fill-blue-600 dark:fill-blue-400 select-none pointer-events-none"
                               >
@@ -627,9 +635,9 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                             {item.lyric && (
                               <text
                                 x="0"
-                                y={staffTopOffset + staffHeight + 22}
+                                y={staffTopOffset + staffHeight + 25}
                                 textAnchor="middle"
-                                className="text-[11px] font-serif italic fill-slate-700 dark:fill-slate-300"
+                                className="text-[11px] font-serif italic fill-slate-800 dark:fill-slate-200 select-none"
                               >
                                 {item.lyric}
                               </text>
