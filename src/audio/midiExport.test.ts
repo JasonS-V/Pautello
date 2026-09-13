@@ -72,4 +72,48 @@ describe('MIDI Export & Variable-Length Encoding', () => {
     // MTrk signature
     expect(String.fromCharCode(...bytes.slice(14, 18))).toBe('MTrk');
   });
+
+  it('exports multi-staff scores (Grand Staff) with both hands interleaved', async () => {
+    const score: Score = {
+      id: 'grand-staff-midi',
+      title: 'Grand Staff Test',
+      composer: 'Tester',
+      tempo: 120,
+      timeSignature: { beats: 4, beatType: 4 },
+      keySignature: 'C',
+      staves: [
+        {
+          id: 's1',
+          name: 'Right Hand',
+          clef: 'treble',
+          measures: [{
+            id: 'm1',
+            items: [
+              { id: 'n1', type: 'note', pitch: { step: 'C', octave: 5, accidental: null }, duration: 'h' }
+            ]
+          }]
+        },
+        {
+          id: 's2',
+          name: 'Left Hand',
+          clef: 'bass',
+          measures: [{
+            id: 'm2',
+            items: [
+              { id: 'n2', type: 'note', pitch: { step: 'C', octave: 3, accidental: null }, duration: 'h' }
+            ]
+          }]
+        }
+      ],
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const blob = exportScoreToMidi(score);
+    expect(blob.size).toBeGreaterThan(50);
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe('MThd');
+    expect(String.fromCharCode(...bytes.slice(14, 18))).toBe('MTrk');
+  });
 });

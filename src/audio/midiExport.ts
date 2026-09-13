@@ -65,12 +65,24 @@ export function exportScoreToMidi(score: Score): Blob {
   // Program change to Acoustic Grand Piano (channel 0, program 0)
   trackEvents.push(0x00, 0xc0, 0x00);
 
-  // Collect notes
-  let deltaAccumulator = 0;
-  const primaryStaff = score.staves[0];
+  // Collect notes across all staves and sort by absolute tick timeline
+  interface MidiNoteEvent {
+    tick: number;
+    type: 'on' | 'off';
+    pitch: number;
+    velocity: number;
+    order: number;
+  }
 
-  if (primaryStaff) {
-    for (const measure of primaryStaff.measures) {
+  const rawEvents: MidiNoteEvent[] = [];
+  const beatsPerMeasure = score.timeSignature.beats * (4 / score.timeSignature.beatType);
+
+  for (const staff of score.staves) {
+    let measureDownbeatTick = 0;
+    for (let mIdx = 0; mIdx < staff.measures.length; mIdx++) {
+      const measure = staff.measures[mIdx];
+      let itemTick = measureDownbeatTick;
+
       for (const item of measure.items) {
         const itemBeats = getItemBeats(item.duration, item.isDotted);
         const itemTicks = Math.round(itemBeats * ticksPerQuarter);
@@ -78,29 +90,49 @@ export function exportScoreToMidi(score: Score): Blob {
         if (item.type === 'note' && item.pitch) {
           const midiPitch = pitchToMidi(item.pitch);
           const velocity = item.articulation === 'accent' ? 120 : 96;
+          const noteDurationTicks = item.articulation === 'staccato'
+            ? Math.round(itemTicks * 0.5)
+            : Math.max(10, itemTicks - 10);
 
-          // Note ON
-          trackEvents.push(...writeVariableLength(deltaAccumulator));
-          trackEvents.push(0x90, midiPitch, velocity);
+          rawEvents.push({
+            tick: itemTick,
+            type: 'on',
+            pitch: midiPitch,
+            velocity,
+            order: 1,
+          });
 
-          // Note OFF duration
-          const noteDurationTicks = item.articulation === 'staccato' ? Math.round(itemTicks * 0.5) : itemTicks - 10;
-          const restAfterTicks = itemTicks - noteDurationTicks;
-
-          trackEvents.push(...writeVariableLength(noteDurationTicks));
-          trackEvents.push(0x80, midiPitch, 0x00);
-
-          deltaAccumulator = restAfterTicks;
-        } else {
-          // Rest: just accumulate delta time
-          deltaAccumulator += itemTicks;
+          rawEvents.push({
+            tick: itemTick + noteDurationTicks,
+            type: 'off',
+            pitch: midiPitch,
+            velocity: 0,
+            order: 0,
+          });
         }
+
+        itemTick += itemTicks;
       }
+
+      measureDownbeatTick += Math.round(beatsPerMeasure * ticksPerQuarter);
     }
   }
 
+  rawEvents.sort((a, b) => {
+    if (a.tick !== b.tick) return a.tick - b.tick;
+    return a.order - b.order;
+  });
+
+  let lastTick = 0;
+  for (const ev of rawEvents) {
+    const delta = Math.max(0, ev.tick - lastTick);
+    trackEvents.push(...writeVariableLength(delta));
+    trackEvents.push(ev.type === 'on' ? 0x90 : 0x80, ev.pitch, ev.velocity);
+    lastTick = ev.tick;
+  }
+
   // End of Track event: FF 2F 00
-  trackEvents.push(...writeVariableLength(deltaAccumulator));
+  trackEvents.push(...writeVariableLength(0));
   trackEvents.push(0xff, 0x2f, 0x00);
 
   // Construct MIDI file
