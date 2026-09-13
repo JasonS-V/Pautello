@@ -12,6 +12,7 @@ import {
   PanelRight,
   Upload,
   Share2,
+  Target,
 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
@@ -41,6 +42,10 @@ interface NavbarProps {
   onOpenShare?: () => void;
   isMidiConnected?: boolean;
   connectedDevices?: string[];
+  isPracticeMode?: boolean;
+  practiceAccuracy?: number;
+  practiceStreak?: number;
+  onTogglePractice?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -66,6 +71,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenShare,
   isMidiConnected,
   connectedDevices,
+  isPracticeMode,
+  practiceAccuracy = 100,
+  practiceStreak = 0,
+  onTogglePractice,
 }) => {
   const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
@@ -181,6 +190,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Clock className="w-3.5 h-3.5" />
             <span>Metr.</span>
           </button>
+
+          {/* Practice Mode Button */}
+          {onTogglePractice && (
+            <button
+              onClick={onTogglePractice}
+              className={`px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 font-bold transition-all ${
+                isPracticeMode
+                  ? 'bg-[#bef264] text-lime-950 shadow-xs ring-1 ring-lime-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1f2330]'
+              }`}
+              title="Modo Práctica Interactivo: La partitura espera a que toques cada nota con tu teclado"
+            >
+              <Target className={`w-3.5 h-3.5 ${isPracticeMode ? 'animate-pulse text-lime-800' : ''}`} />
+              <span>{isPracticeMode ? `Práctica (${practiceAccuracy}%)` : 'Práctica'}</span>
+              {isPracticeMode && (practiceStreak ?? 0) > 1 && (
+                <span className="text-[10px] bg-lime-400/60 px-1 rounded-full font-mono">
+                  🔥{practiceStreak}
+                </span>
+              )}
+            </button>
+          )}
+
 
           <div className="h-4 w-px bg-slate-200 dark:bg-[#232836] mx-1" />
 

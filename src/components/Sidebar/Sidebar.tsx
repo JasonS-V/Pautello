@@ -29,6 +29,8 @@ interface SidebarProps {
   onToggleNamingConvention: () => void;
   showNoteNames: boolean;
   onToggleShowNoteNames: () => void;
+  showTablature?: boolean;
+  onToggleTablature?: () => void;
   isPianoCollapsed: boolean;
   onTogglePiano: () => void;
   onOpenTemplates: () => void;
@@ -52,6 +54,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleNamingConvention,
   showNoteNames,
   onToggleShowNoteNames,
+  showTablature = false,
+  onToggleTablature,
   isPianoCollapsed,
   onTogglePiano,
   onOpenTemplates,
@@ -320,6 +324,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {showNoteNames ? 'Visible' : 'Oculto'}
             </span>
           </button>
+
+          {/* Guitar Tablature Toggle */}
+          {onToggleTablature && (
+            <button
+              onClick={onToggleTablature}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+              title="Mostrar u ocultar la tablatura de guitarra (TAB) bajo el pentagrama"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-black text-amber-500 bg-amber-100 dark:bg-amber-950/80 px-1 rounded">
+                  TAB
+                </span>
+                <span>Tablatura</span>
+              </div>
+              <span
+                className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
+                  showTablature
+                    ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-[#fed7aa]'
+                    : 'bg-slate-100 dark:bg-[#1d212f] text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {showTablature ? 'ON' : 'OFF'}
+              </span>
+            </button>
+          )}
 
           {/* Dark / Light Theme Toggle */}
           <button

@@ -22,6 +22,7 @@ import {
 import { SVG_PATHS } from '../../engraver/glyphPaths';
 import { PlaybackState } from '../../audio/player';
 import { audioEngine } from '../../audio/synth';
+import { pitchToGuitarTab } from '../../utils/guitarTab';
 
 interface ScoreViewProps {
   score: Score;
@@ -36,6 +37,9 @@ interface ScoreViewProps {
   isRestMode: boolean;
   namingConvention: NamingConvention;
   showNoteNames: boolean;
+  showTablature?: boolean;
+  practiceTargetNote?: { measureIdx: number; itemIdx: number } | null;
+  practiceHitResult?: 'correct' | 'incorrect' | null;
   playbackState: PlaybackState;
 }
 
@@ -51,6 +55,9 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
   isRestMode,
   namingConvention,
   showNoteNames,
+  showTablature = false,
+  practiceTargetNote = null,
+  practiceHitResult = null,
   playbackState,
 }) => {
   const [hoveredMeasureIdx, setHoveredMeasureIdx] = useState<number | null>(null);
@@ -68,7 +75,10 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
   const lineSpacing = 10;
   const staffHeight = 40;
   const staffTopOffset = 60; // Top padding for title & tempo
-  const systemHeight = 150; // Height per line of music
+  const systemHeight = showTablature ? 215 : 150; // Height per line of music
+  const tabTopOffset = staffTopOffset + staffHeight + 35;
+  const tabLineSpacing = 7.5;
+
 
   // Group measures into systems (lines of score). E.g. 3 measures per line
   const measuresPerSystem = 3;
@@ -194,7 +204,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                   x1={2}
                   y1={staffTopOffset}
                   x2={2}
-                  y2={staffTopOffset + staffHeight}
+                  y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
                   stroke="currentColor"
                   strokeWidth="2.5"
                 />
@@ -212,6 +222,33 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                     className="text-slate-300 dark:text-slate-700"
                   />
                 ))}
+
+                {/* 6 Horizontal Tablature Lines (Optional Guitar TAB) */}
+                {showTablature && (
+                  <>
+                    {[0, 1, 2, 3, 4, 5].map((tIdx) => (
+                      <line
+                        key={`tab-line-${tIdx}`}
+                        x1={0}
+                        y1={tabTopOffset + tIdx * tabLineSpacing}
+                        x2={systemWidth}
+                        y2={tabTopOffset + tIdx * tabLineSpacing}
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        className="text-slate-300/80 dark:text-slate-700/80"
+                      />
+                    ))}
+                    {/* TAB label on header */}
+                    <g
+                      transform={`translate(14, ${tabTopOffset + 8})`}
+                      className="font-mono font-black text-[9px] fill-slate-400 dark:fill-slate-500 select-none tracking-widest leading-none pointer-events-none"
+                    >
+                      <text x="0" y="0">T</text>
+                      <text x="0" y="12">A</text>
+                      <text x="0" y="24">B</text>
+                    </g>
+                  </>
+                )}
 
                 {/* Clef Glyph */}
                 <g
@@ -463,6 +500,64 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                               />
                             )}
 
+                            {/* Practice Target Pulsing Ring */}
+                            {practiceTargetNote &&
+                              practiceTargetNote.measureIdx === actualMeasureIdx &&
+                              practiceTargetNote.itemIdx === itemIdx && (
+                                <g className="pointer-events-none">
+                                  <circle
+                                    cx="0"
+                                    cy={noteY}
+                                    r="18"
+                                    fill="none"
+                                    stroke="#84cc16"
+                                    strokeWidth="2.5"
+                                    className="animate-ping opacity-75"
+                                  />
+                                  <circle
+                                    cx="0"
+                                    cy={noteY}
+                                    r="15"
+                                    fill="#bef264"
+                                    fillOpacity="0.25"
+                                    stroke="#65a30d"
+                                    strokeWidth="2"
+                                    strokeDasharray="3 2"
+                                  />
+                                  <text
+                                    x="0"
+                                    y={noteY - 24}
+                                    textAnchor="middle"
+                                    className="text-[9px] font-black font-sans fill-lime-600 dark:fill-[#bef264] select-none"
+                                  >
+                                    🎯 TOCA
+                                  </text>
+                                  {practiceHitResult === 'correct' && (
+                                    <circle
+                                      cx="0"
+                                      cy={noteY}
+                                      r="24"
+                                      fill="none"
+                                      stroke="#22c55e"
+                                      strokeWidth="3.5"
+                                      className="animate-pulse"
+                                    />
+                                  )}
+                                  {practiceHitResult === 'incorrect' && (
+                                    <circle
+                                      cx="0"
+                                      cy={noteY}
+                                      r="20"
+                                      fill="none"
+                                      stroke="#ef4444"
+                                      strokeWidth="3"
+                                      strokeDasharray="3 2"
+                                      className="animate-pulse"
+                                    />
+                                  )}
+                                </g>
+                              )}
+
                             {/* Playing Highlight Circle */}
                             {isItemPlaying && (
                               <circle
@@ -666,6 +761,37 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                 {item.chord}
                               </text>
                             )}
+
+                            {/* Guitar Tablature Fret Number */}
+                            {showTablature && (() => {
+                              const tabPos = pitchToGuitarTab(item.pitch);
+                              if (!tabPos) return null;
+                              const tabY = tabTopOffset + (tabPos.stringNumber - 1) * tabLineSpacing;
+                              return (
+                                <g className="pointer-events-none select-none">
+                                  <rect
+                                    x="-6"
+                                    y={tabY - 5.5}
+                                    width="12"
+                                    height="11"
+                                    rx="2"
+                                    className="fill-white dark:fill-[#161922]"
+                                  />
+                                  <text
+                                    x="0"
+                                    y={tabY + 3.5}
+                                    textAnchor="middle"
+                                    className={`text-[9.5px] font-mono font-bold select-none ${
+                                      isItemPlaying
+                                        ? 'fill-amber-500 font-black'
+                                        : 'fill-slate-800 dark:fill-slate-200'
+                                    }`}
+                                  >
+                                    {tabPos.fret}
+                                  </text>
+                                </g>
+                              );
+                            })()}
                           </g>
                         );
                       })}
@@ -738,7 +864,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                   0.4
                               : 10
                           }
-                          y2={staffTopOffset + staffHeight + 10}
+                          y2={showTablature ? tabTopOffset + 5 * tabLineSpacing + 10 : staffTopOffset + staffHeight + 10}
                           stroke="#f59e0b"
                           strokeWidth="2.5"
                           className="pointer-events-none"
@@ -750,7 +876,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                         x1={availableMeasureWidth}
                         y1={staffTopOffset}
                         x2={availableMeasureWidth}
-                        y2={staffTopOffset + staffHeight}
+                        y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
                         stroke="currentColor"
                         strokeWidth={actualMeasureIdx === totalMeasures - 1 ? '3' : '1.2'}
                         className="text-slate-400 dark:text-slate-600"
@@ -760,7 +886,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                           x1={availableMeasureWidth - 4}
                           y1={staffTopOffset}
                           x2={availableMeasureWidth - 4}
-                          y2={staffTopOffset + staffHeight}
+                          y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
                           stroke="currentColor"
                           strokeWidth="1"
                           className="text-slate-400 dark:text-slate-600"

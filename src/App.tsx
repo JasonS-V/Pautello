@@ -16,10 +16,13 @@ import { TemplatesModal } from './components/Modals/TemplatesModal';
 import { MixerModal } from './components/Modals/MixerModal';
 import { ImportModal } from './components/Modals/ImportModal';
 import { ShareModal } from './components/Modals/ShareModal';
+import { PracticeResultModal } from './components/Modals/PracticeResultModal';
 import { OnboardingTour, TUTORIAL_STORAGE_KEY } from './components/Onboarding/OnboardingTour';
 import { useMidiInput } from './hooks/useMidiInput';
+import { usePracticeMode } from './hooks/usePracticeMode';
 import { decompressScoreFromHash } from './utils/shareUrl';
 import { audioEngine } from './audio/synth';
+
 import {
   loadThemePreference,
   saveThemePreference,
@@ -92,6 +95,7 @@ export default function App() {
     loadNamingPreference()
   );
   const [showNoteNames, setShowNoteNames] = useState<boolean>(true);
+  const [showTablature, setShowTablature] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isPianoCollapsed, setIsPianoCollapsed] = useState<boolean>(false);
@@ -108,15 +112,38 @@ export default function App() {
     return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== 'true';
   });
 
+  // Interactive Practice Mode ("Toca conmigo")
+  const {
+    isActive: isPracticeActive,
+    targetNote: practiceTargetNote,
+    accuracy: practiceAccuracy,
+    streak: practiceStreak,
+    lastHitResult: practiceHitResult,
+    isCompleted: isPracticeCompleted,
+    startPractice,
+    stopPractice,
+    resetPractice,
+    checkPlayedMidi,
+  } = usePracticeMode({
+    score,
+    onNoteHit: (mIdx) => {
+      selectItem(mIdx, null);
+    },
+  });
+
   // Web MIDI & External Keyboard state
   const [activeMidiPitch, setActiveMidiPitch] = useState<number | null>(null);
 
   const { isConnected: isMidiConnected, connectedDevices } = useMidiInput({
     onNoteOn: (midi, velocity) => {
-      const pitch = midiToPitch(midi);
       setActiveMidiPitch(midi);
-      insertNoteAt(selectedMeasureIdx, pitch);
-      audioEngine.playMidi(midi, 0.4, velocity / 127);
+      if (isPracticeActive) {
+        checkPlayedMidi(midi);
+      } else {
+        const pitch = midiToPitch(midi);
+        insertNoteAt(selectedMeasureIdx, pitch);
+        audioEngine.playMidi(midi, 0.4, velocity / 127);
+      }
       setTimeout(() => setActiveMidiPitch(null), 250);
     },
     onNoteOff: () => {
@@ -256,6 +283,8 @@ export default function App() {
         onToggleNamingConvention={toggleNamingConvention}
         showNoteNames={showNoteNames}
         onToggleShowNoteNames={() => setShowNoteNames((prev) => !prev)}
+        showTablature={showTablature}
+        onToggleTablature={() => setShowTablature((prev) => !prev)}
         isPianoCollapsed={isPianoCollapsed}
         onTogglePiano={() => setIsPianoCollapsed((prev) => !prev)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
@@ -296,6 +325,17 @@ export default function App() {
           onOpenShare={() => setIsShareOpen(true)}
           isMidiConnected={isMidiConnected}
           connectedDevices={connectedDevices}
+          isPracticeMode={isPracticeActive}
+          practiceAccuracy={practiceAccuracy}
+          practiceStreak={practiceStreak}
+          onTogglePractice={() => {
+            if (isPracticeActive) {
+              stopPractice();
+            } else {
+              stop();
+              startPractice();
+            }
+          }}
         />
 
         {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
@@ -389,6 +429,13 @@ export default function App() {
                 namingConvention={namingConvention}
                 showNoteNames={showNoteNames}
                 playbackState={playbackState}
+                showTablature={showTablature}
+                practiceTargetNote={
+                  isPracticeActive && practiceTargetNote
+                    ? { measureIdx: practiceTargetNote.measureIdx, itemIdx: practiceTargetNote.itemIdx }
+                    : null
+                }
+                practiceHitResult={practiceHitResult}
               />
             </div>
           </div>
@@ -397,7 +444,13 @@ export default function App() {
         {/* Bottom Integrated Piano Roll (Collapsible) */}
         <div id="piano-container">
           <VirtualPiano
-            onNoteClick={(pitch) => insertNoteAt(selectedMeasureIdx, pitch)}
+            onNoteClick={(pitch) => {
+              if (isPracticeActive) {
+                checkPlayedMidi(pitchToMidi(pitch));
+              } else {
+                insertNoteAt(selectedMeasureIdx, pitch);
+              }
+            }}
             namingConvention={namingConvention}
             activePlaybackMidi={activePlaybackMidi}
             activeMidiPitch={activeMidiPitch}
@@ -459,6 +512,7 @@ export default function App() {
 
       <ExportModal
         score={score}
+        instrument={instrument}
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
         onOpenImport={() => setIsImportOpen(true)}
@@ -505,6 +559,18 @@ export default function App() {
         score={score}
         isOpen={isShareOpen}
         onClose={() => setIsShareOpen(false)}
+      />
+
+      {/* Practice Mode Completion Scorecard */}
+      <PracticeResultModal
+        isOpen={isPracticeCompleted}
+        accuracy={practiceAccuracy}
+        streak={practiceStreak}
+        onRestart={() => {
+          resetPractice();
+          startPractice();
+        }}
+        onClose={stopPractice}
       />
 
       {/* Interactive First-Launch Onboarding Walkthrough */}

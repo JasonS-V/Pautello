@@ -1,8 +1,10 @@
-import React, { useRef } from 'react';
-import { X, Printer, FileCode, Music, Download, Upload } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Printer, FileCode, Music, Download, Upload, Volume2 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { exportScoreToMusicXml, importMusicXmlToScore } from '../../utils/musicxml';
 import { exportScoreToMidi } from '../../audio/midiExport';
+import { renderScoreToWav } from '../../audio/wavExport';
+import { InstrumentType } from '../../audio/synth';
 
 interface ExportModalProps {
   score: Score;
@@ -10,6 +12,7 @@ interface ExportModalProps {
   onClose: () => void;
   onImportScore: (score: Score) => void;
   onOpenImport?: () => void;
+  instrument?: InstrumentType;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -18,8 +21,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
   onImportScore,
   onOpenImport,
+  instrument = 'piano',
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingWav, setIsExportingWav] = useState<boolean>(false);
+
 
   if (!isOpen) return null;
 
@@ -43,6 +49,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const handleExportMidi = () => {
     const blob = exportScoreToMidi(score);
     downloadBlob(blob, `${slugify(score.title)}.mid`);
+  };
+
+  const handleExportWav = async () => {
+    try {
+      setIsExportingWav(true);
+      const blob = await renderScoreToWav(score, instrument);
+      downloadBlob(blob, `${slugify(score.title)}.wav`);
+    } catch (err) {
+      console.error('Error al exportar audio WAV:', err);
+      alert('Hubo un problema al renderizar el audio.');
+    } finally {
+      setIsExportingWav(false);
+    }
   };
 
   const handleExportJson = () => {
@@ -182,6 +201,31 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               .mid
             </span>
           </button>
+
+          {/* WAV Audio Export */}
+          <button
+            onClick={handleExportWav}
+            disabled={isExportingWav}
+            className="w-full flex items-center justify-between p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-cyan-500 dark:hover:border-cyan-500 bg-slate-50 dark:bg-[#1f2432] transition-all group text-left disabled:opacity-50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                <Volume2 className={`w-5 h-5 ${isExportingWav ? 'animate-pulse' : ''}`} />
+              </div>
+              <div>
+                <div className="font-semibold text-sm group-hover:text-cyan-600 transition-colors">
+                  {isExportingWav ? 'Renderizando audio a 44.1 kHz...' : 'Audio de Alta Definición (.wav)'}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Sonido PCM estéreo sintetizado listo para reproducir en cualquier reproductor o móvil
+                </div>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-cyan-600 bg-cyan-50 dark:bg-cyan-950/60 px-2 py-1 rounded">
+              {isExportingWav ? 'Procesando...' : '.wav'}
+            </span>
+          </button>
+
 
           {/* JSON Export */}
           <button
