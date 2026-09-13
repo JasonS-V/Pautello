@@ -1,15 +1,51 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Score, ScoreItem, Pitch, Step, NoteDuration, Accidental, Clef, KeySignature, TimeSignature } from '../types/music';
+import { Score, ScoreItem, Staff, Measure, Pitch, Step, NoteDuration, Accidental, Clef, KeySignature, TimeSignature } from '../types/music';
 import { TEMPLATES, ScoreTemplate } from '../constants/templates';
 import { loadScoreFromStorage, saveScoreToStorage } from '../utils/storage';
 import { audioEngine } from '../audio/synth';
 import { pitchToMidi, getItemBeats } from '../constants/pitches';
 import { transposeScoreNotes, getSemitoneOffsetBetweenKeys } from '../utils/keyDetection';
 
+function findStaffAndMeasure(
+  newScore: Score,
+  preferredStaffIdx: number,
+  preferredMeasureIdx: number,
+  itemId?: string | null
+): { staff: Staff; measure: Measure } | null {
+  if (itemId) {
+    const prefStaff = newScore.staves[preferredStaffIdx];
+    if (prefStaff) {
+      const prefMeasure = prefStaff.measures[preferredMeasureIdx];
+      if (prefMeasure?.items.some((it) => it.id === itemId)) {
+        return { staff: prefStaff, measure: prefMeasure };
+      }
+      for (const m of prefStaff.measures) {
+        if (m.items.some((it) => it.id === itemId)) {
+          return { staff: prefStaff, measure: m };
+        }
+      }
+    }
+    for (const s of newScore.staves) {
+      for (const m of s.measures) {
+        if (m.items.some((it) => it.id === itemId)) {
+          return { staff: s, measure: m };
+        }
+      }
+    }
+  }
+
+  const staff = newScore.staves[preferredStaffIdx] || newScore.staves[0];
+  if (!staff) return null;
+  const measure = staff.measures[preferredMeasureIdx] || staff.measures[0];
+  if (!measure) return null;
+  return { staff, measure };
+}
+
 export function useScore() {
   const [score, setScore] = useState<Score>(() => loadScoreFromStorage());
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedMeasureIdx, setSelectedMeasureIdx] = useState<number>(0);
+  const [selectedStaffIdx, setSelectedStaffIdx] = useState<number>(0);
 
   // Active toolbar insertion settings
   const [activeDuration, setActiveDuration] = useState<NoteDuration>('q');
@@ -48,14 +84,16 @@ export function useScore() {
     setScore(next);
   }, [score]);
 
-  const selectItem = useCallback((measureIdx: number, itemId: string | null) => {
+  const selectItem = useCallback((measureIdx: number, itemId: string | null, staffIdx: number = 0) => {
     setSelectedMeasureIdx(measureIdx);
     setSelectedItemId(itemId);
+    setSelectedStaffIdx(staffIdx);
   }, []);
 
-  const insertNoteAt = useCallback((measureIdx: number, pitch: Pitch, customDuration?: NoteDuration) => {
+  const insertNoteAt = useCallback((measureIdx: number, pitch: Pitch, customDuration?: NoteDuration, targetStaffIdx?: number) => {
     pushHistory(score);
     const duration = customDuration || activeDuration;
+    const staffIdxToUse = targetStaffIdx !== undefined ? targetStaffIdx : selectedStaffIdx;
 
     // Play audio feedback for the inserted pitch
     const midi = pitchToMidi(pitch);
@@ -63,7 +101,7 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
+      const staff = newScore.staves[staffIdxToUse] || newScore.staves[0];
       if (!staff) return prev;
 
       let currentIdx = Math.max(0, Math.min(measureIdx, staff.measures.length - 1));
@@ -128,13 +166,14 @@ export function useScore() {
     });
   }, [score, activeDuration, isDotted, selectedItemId, pushHistory]);
 
-  const insertRestAt = useCallback((measureIdx: number, customDuration?: NoteDuration) => {
+  const insertRestAt = useCallback((measureIdx: number, customDuration?: NoteDuration, targetStaffIdx?: number) => {
     pushHistory(score);
     const duration = customDuration || activeDuration;
+    const staffIdxToUse = targetStaffIdx !== undefined ? targetStaffIdx : selectedStaffIdx;
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
+      const staff = newScore.staves[staffIdxToUse] || newScore.staves[0];
       if (!staff) return prev;
 
       let currentIdx = Math.max(0, Math.min(measureIdx, staff.measures.length - 1));
@@ -204,11 +243,9 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, targetId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const idx = measure.items.findIndex(it => it.id === targetId);
       if (idx !== -1) {
@@ -225,7 +262,7 @@ export function useScore() {
 
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const transposeSelected = useCallback((semitones: number) => {
     if (!selectedItemId) return;
@@ -233,11 +270,9 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item && item.type === 'note' && item.pitch) {
@@ -273,7 +308,7 @@ export function useScore() {
 
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const changeSelectedDuration = useCallback((duration: NoteDuration) => {
     if (!selectedItemId) return;
@@ -281,11 +316,9 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item) {
@@ -293,7 +326,7 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const toggleSelectedDot = useCallback(() => {
     if (!selectedItemId) return;
@@ -301,11 +334,9 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item) {
@@ -313,7 +344,7 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const setSelectedAccidental = useCallback((acc: Accidental) => {
     if (!selectedItemId) return;
@@ -321,11 +352,9 @@ export function useScore() {
 
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item && item.type === 'note' && item.pitch) {
@@ -334,17 +363,15 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const updateSelectedLyric = useCallback((lyric: string) => {
     if (!selectedItemId) return;
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item) {
@@ -352,17 +379,15 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [selectedItemId, selectedMeasureIdx]);
+  }, [selectedItemId, selectedMeasureIdx, selectedStaffIdx]);
 
   const updateSelectedChord = useCallback((chord: string | undefined) => {
     if (!selectedItemId) return;
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item) {
@@ -370,18 +395,16 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [selectedItemId, selectedMeasureIdx]);
+  }, [selectedItemId, selectedMeasureIdx, selectedStaffIdx]);
 
   const updateSelectedStep = useCallback((step: Step) => {
     if (!selectedItemId) return;
     pushHistory(score);
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      const staff = newScore.staves[0];
-      if (!staff) return prev;
-
-      const measure = staff.measures[selectedMeasureIdx];
-      if (!measure) return prev;
+      const loc = findStaffAndMeasure(newScore, selectedStaffIdx, selectedMeasureIdx, selectedItemId);
+      if (!loc) return prev;
+      const { measure } = loc;
 
       const item = measure.items.find(it => it.id === selectedItemId);
       if (item && item.type === 'note' && item.pitch) {
@@ -390,7 +413,7 @@ export function useScore() {
       }
       return newScore;
     });
-  }, [score, selectedItemId, selectedMeasureIdx, pushHistory]);
+  }, [score, selectedItemId, selectedMeasureIdx, selectedStaffIdx, pushHistory]);
 
   const addMeasure = useCallback(() => {
     pushHistory(score);
@@ -464,13 +487,47 @@ export function useScore() {
     }
   }, [score, pushHistory]);
 
-  const updateClef = useCallback((clef: Clef) => {
+  const updateClef = useCallback((clef: Clef, staffIdx: number = 0) => {
     pushHistory(score);
     setScore(prev => {
       const newScore = JSON.parse(JSON.stringify(prev)) as Score;
-      if (newScore.staves[0]) {
-        newScore.staves[0].clef = clef;
+      if (newScore.staves[staffIdx]) {
+        newScore.staves[staffIdx].clef = clef;
       }
+      return newScore;
+    });
+  }, [score, pushHistory]);
+
+  const toggleGrandStaff = useCallback(() => {
+    pushHistory(score);
+    setScore(prev => {
+      const newScore = JSON.parse(JSON.stringify(prev)) as Score;
+      if (newScore.staves.length === 1) {
+        // Activate Grand Staff: Treble (Right Hand) + Bass (Left Hand)
+        newScore.staves[0].name = 'Mano Derecha';
+        newScore.staves[0].clef = 'treble';
+        const numMeasures = newScore.staves[0].measures.length;
+        const bassMeasures = Array.from({ length: numMeasures }, (_, i) => ({
+          id: `m-bass-${Date.now()}-${i}`,
+          items: [{
+            id: `rest-bass-${Date.now()}-${i}`,
+            type: 'rest' as const,
+            duration: 'w' as const,
+          }]
+        }));
+        newScore.staves.push({
+          id: 'staff-bass',
+          name: 'Mano Izquierda',
+          clef: 'bass',
+          measures: bassMeasures,
+        });
+      } else {
+        // Revert to single staff
+        newScore.staves[0].name = 'Voz';
+        newScore.staves = [newScore.staves[0]];
+        setSelectedStaffIdx(0);
+      }
+      newScore.updatedAt = Date.now();
       return newScore;
     });
   }, [score, pushHistory]);
@@ -482,6 +539,7 @@ export function useScore() {
     setScore(cloned);
     setSelectedItemId(null);
     setSelectedMeasureIdx(0);
+    setSelectedStaffIdx(0);
   }, [score, pushHistory]);
 
   const clearScore = useCallback(() => {
@@ -493,6 +551,10 @@ export function useScore() {
     score,
     selectedItemId,
     selectedMeasureIdx,
+    selectedStaffIdx,
+    setSelectedStaffIdx,
+    toggleGrandStaff,
+    isGrandStaff: score.staves.length > 1,
     activeDuration,
     setActiveDuration,
     activeAccidental,

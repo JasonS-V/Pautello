@@ -225,10 +225,8 @@ export async function renderScoreToWav(
   const secondsPerBeat = 60 / Math.max(30, Math.min(300, score.tempo));
   const maxMeasureBeats = score.timeSignature.beats * (4 / score.timeSignature.beatType);
 
-  let currentTime = 0.05; // 50ms initial silence for clean attack
-
-  const staff = score.staves[0];
-  if (staff) {
+  for (const staff of score.staves) {
+    let currentTime = 0.05; // 50ms initial silence for clean attack
     for (const measure of staff.measures) {
       let measureTime = 0;
       for (const item of measure.items) {

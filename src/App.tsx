@@ -17,9 +17,13 @@ import { MixerModal } from './components/Modals/MixerModal';
 import { ImportModal } from './components/Modals/ImportModal';
 import { ShareModal } from './components/Modals/ShareModal';
 import { PracticeResultModal } from './components/Modals/PracticeResultModal';
+import { TunerModal } from './components/Modals/TunerModal';
+import { PlayAlongModal } from './components/Modals/PlayAlongModal';
 import { OnboardingTour, TUTORIAL_STORAGE_KEY } from './components/Onboarding/OnboardingTour';
 import { useMidiInput } from './hooks/useMidiInput';
 import { usePracticeMode } from './hooks/usePracticeMode';
+import { useMicPitch } from './hooks/useMicPitch';
+import { usePlayAlong } from './hooks/usePlayAlong';
 import { decompressScoreFromHash } from './utils/shareUrl';
 import { audioEngine } from './audio/synth';
 
@@ -37,6 +41,9 @@ export default function App() {
     score,
     selectedItemId,
     selectedMeasureIdx,
+    selectedStaffIdx,
+    toggleGrandStaff,
+    isGrandStaff,
     activeDuration,
     setActiveDuration,
     activeAccidental,
@@ -150,6 +157,56 @@ export default function App() {
       setActiveMidiPitch(null);
     },
   });
+
+  // Phase 3: Tuner & Play-Along Modals state
+  const [isTunerOpen, setIsTunerOpen] = useState<boolean>(false);
+  const [isPlayAlongOpen, setIsPlayAlongOpen] = useState<boolean>(false);
+
+  // Phase 3: Play-Along Multimedia Backing Track
+  const {
+    audioName: playAlongName,
+    audioDuration: playAlongDuration,
+    currentTime: playAlongTime,
+    isPlaying: isPlayAlongPlaying,
+    playbackRate: playAlongSpeed,
+    volume: playAlongVolume,
+    isAudioLoaded: isPlayAlongLoaded,
+    loadAudioFile: loadPlayAlongAudio,
+    removeAudio: removePlayAlongAudio,
+    play: playPlayAlong,
+    pause: pausePlayAlong,
+    stop: stopPlayAlong,
+    seek: seekPlayAlong,
+    setPlaybackRate: setPlayAlongSpeed,
+    setVolume: setPlayAlongVolume,
+  } = usePlayAlong();
+
+  // Phase 3: Real-time Microphone Pitch Detection for Acoustic Practice
+  const { startListening: startMicPractice, stopListening: stopMicPractice } = useMicPitch({
+    onPitchDetected: (res) => {
+      if (isPracticeActive) {
+        checkPlayedMidi(res.midi);
+      }
+    },
+  });
+
+  const handleTogglePlay = () => {
+    togglePlay();
+    if (isPlayAlongLoaded) {
+      if (playbackState.isPlaying) {
+        pausePlayAlong();
+      } else {
+        playPlayAlong();
+      }
+    }
+  };
+
+  const handleStop = () => {
+    stop();
+    if (isPlayAlongLoaded) {
+      stopPlayAlong();
+    }
+  };
 
   // Auto-load shared score from URL hash on mount
   useEffect(() => {
@@ -292,6 +349,8 @@ export default function App() {
         onOpenExport={() => setIsExportOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
         onOpenShare={() => setIsShareOpen(true)}
+        onOpenTuner={() => setIsTunerOpen(true)}
+        onOpenPlayAlong={() => setIsPlayAlongOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenDonate={() => setIsDonateOpen(true)}
         onOpenTutorial={() => setIsTutorialOpen(true)}
@@ -308,8 +367,8 @@ export default function App() {
           onUpdateComposer={updateComposer}
           onUpdateTempo={updateTempo}
           isPlaying={playbackState.isPlaying}
-          onTogglePlay={togglePlay}
-          onStop={stop}
+          onTogglePlay={handleTogglePlay}
+          onStop={handleStop}
           isLooping={isLooping}
           onToggleLoop={toggleLoop}
           metronomeEnabled={metronomeEnabled}
@@ -330,12 +389,17 @@ export default function App() {
           practiceStreak={practiceStreak}
           onTogglePractice={() => {
             if (isPracticeActive) {
+              stopMicPractice();
               stopPractice();
             } else {
-              stop();
+              handleStop();
               startPractice();
+              startMicPractice().catch(() => {});
             }
           }}
+          onOpenTuner={() => setIsTunerOpen(true)}
+          onOpenPlayAlong={() => setIsPlayAlongOpen(true)}
+          isPlayAlongLoaded={isPlayAlongLoaded}
         />
 
         {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
@@ -419,9 +483,10 @@ export default function App() {
                 score={score}
                 selectedItemId={selectedItemId}
                 selectedMeasureIdx={selectedMeasureIdx}
-                onSelectItem={selectItem}
-                onInsertNoteAt={(mIdx, pitch) => insertNoteAt(mIdx, pitch)}
-                onInsertRestAt={(mIdx) => insertRestAt(mIdx)}
+                selectedStaffIdx={selectedStaffIdx}
+                onSelectItem={(mIdx, itemId, sIdx) => selectItem(mIdx, itemId, sIdx)}
+                onInsertNoteAt={(mIdx, pitch, sIdx) => insertNoteAt(mIdx, pitch, undefined, sIdx)}
+                onInsertRestAt={(mIdx, sIdx) => insertRestAt(mIdx, undefined, sIdx)}
                 onDeleteMeasure={deleteMeasure}
                 activeDuration={activeDuration}
                 activeAccidental={activeAccidental}
@@ -492,6 +557,8 @@ export default function App() {
         onUndo={undo}
         onRedo={redo}
         onOpenExport={() => setIsExportOpen(true)}
+        isGrandStaff={isGrandStaff}
+        onToggleGrandStaff={toggleGrandStaff}
         isCollapsed={isInspectorCollapsed}
         onToggleCollapse={() => setIsInspectorCollapsed((prev) => !prev)}
       />
@@ -559,6 +626,34 @@ export default function App() {
         score={score}
         isOpen={isShareOpen}
         onClose={() => setIsShareOpen(false)}
+      />
+
+      {/* Real-time Chromatic Tuner Modal */}
+      <TunerModal
+        isOpen={isTunerOpen}
+        onClose={() => setIsTunerOpen(false)}
+        namingConvention={namingConvention}
+      />
+
+      {/* Play-Along Audio Backing Track Modal */}
+      <PlayAlongModal
+        isOpen={isPlayAlongOpen}
+        onClose={() => setIsPlayAlongOpen(false)}
+        audioName={playAlongName}
+        audioDuration={playAlongDuration}
+        currentTime={playAlongTime}
+        isPlaying={isPlayAlongPlaying}
+        playbackRate={playAlongSpeed}
+        volume={playAlongVolume}
+        isAudioLoaded={isPlayAlongLoaded}
+        onLoadAudio={loadPlayAlongAudio}
+        onRemoveAudio={removePlayAlongAudio}
+        onPlay={playPlayAlong}
+        onPause={pausePlayAlong}
+        onStop={stopPlayAlong}
+        onSeek={seekPlayAlong}
+        onSetPlaybackRate={setPlayAlongSpeed}
+        onSetVolume={setPlayAlongVolume}
       />
 
       {/* Practice Mode Completion Scorecard */}

@@ -13,6 +13,8 @@ import {
   Upload,
   Share2,
   Target,
+  Activity,
+  Headphones,
 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
@@ -46,6 +48,9 @@ interface NavbarProps {
   practiceAccuracy?: number;
   practiceStreak?: number;
   onTogglePractice?: () => void;
+  onOpenTuner?: () => void;
+  onOpenPlayAlong?: () => void;
+  isPlayAlongLoaded?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -75,6 +80,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   practiceAccuracy = 100,
   practiceStreak = 0,
   onTogglePractice,
+  onOpenTuner,
+  onOpenPlayAlong,
+  isPlayAlongLoaded = false,
 }) => {
   const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
@@ -279,6 +287,37 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-[#f59e0b]" />
             <span>Compartir</span>
+          </button>
+        )}
+
+        {/* Live Tuner Button */}
+        {onOpenTuner && (
+          <button
+            onClick={onOpenTuner}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
+            title="Abrir Afinador Cromático en vivo por micrófono"
+          >
+            <Activity className="w-3.5 h-3.5 text-lime-500 dark:text-[#bef264]" />
+            <span className="hidden sm:inline">Afinador</span>
+          </button>
+        )}
+
+        {/* Play-Along Backing Track Button */}
+        {onOpenPlayAlong && (
+          <button
+            onClick={onOpenPlayAlong}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl border transition-all shadow-xs ${
+              isPlayAlongLoaded
+                ? 'bg-purple-500/15 border-purple-400 text-purple-700 dark:text-[#c4b5fd]'
+                : 'bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200'
+            }`}
+            title="Pista de audio de acompañamiento (Play-Along)"
+          >
+            <Headphones className="w-3.5 h-3.5 text-purple-500 dark:text-[#c4b5fd]" />
+            <span className="hidden sm:inline">Play-Along</span>
+            {isPlayAlongLoaded && (
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+            )}
           </button>
         )}
 

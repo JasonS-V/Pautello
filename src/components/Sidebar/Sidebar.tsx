@@ -15,6 +15,8 @@ import {
   Upload,
   GraduationCap,
   Share2,
+  Activity,
+  Headphones,
 } from 'lucide-react';
 import { NamingConvention } from '../../types/music';
 
@@ -38,6 +40,8 @@ interface SidebarProps {
   onOpenExport: () => void;
   onOpenImport: () => void;
   onOpenShare?: () => void;
+  onOpenTuner?: () => void;
+  onOpenPlayAlong?: () => void;
   onOpenShortcuts: () => void;
   onOpenDonate: () => void;
   onOpenTutorial: () => void;
@@ -63,6 +67,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenExport,
   onOpenImport,
   onOpenShare,
+  onOpenTuner,
+  onOpenPlayAlong,
   onOpenShortcuts,
   onOpenDonate,
   onOpenTutorial,
@@ -254,6 +260,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-[#fed7aa] px-1.5 py-0.5 rounded font-bold">
                   URL
+                </span>
+              </button>
+            )}
+
+            {/* Tab: Afinador en Vivo */}
+            {onOpenTuner && (
+              <button
+                onClick={() => {
+                  onOpenTuner();
+                  onCloseMobile?.();
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <Activity className="w-4 h-4 text-lime-500 dark:text-[#bef264]" />
+                  <span>Afinador en Vivo</span>
+                </div>
+                <span className="text-[9px] bg-lime-500/15 text-lime-600 dark:text-[#bef264] px-1.5 py-0.5 rounded font-bold">
+                  MIC
+                </span>
+              </button>
+            )}
+
+            {/* Tab: Play-Along Multimedia */}
+            {onOpenPlayAlong && (
+              <button
+                onClick={() => {
+                  onOpenPlayAlong();
+                  onCloseMobile?.();
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <Headphones className="w-4 h-4 text-purple-500 dark:text-[#c4b5fd]" />
+                  <span>Play-Along (Audio)</span>
+                </div>
+                <span className="text-[9px] bg-purple-500/15 text-purple-600 dark:text-[#c4b5fd] px-1.5 py-0.5 rounded font-bold">
+                  MP3
                 </span>
               </button>
             )}

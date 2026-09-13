@@ -20,6 +20,7 @@ export class ScorePlayer {
   private currentMeasureIndex: number = 0;
   private currentItemIndex: number = 0;
   private playbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  private secondaryTimeouts: ReturnType<typeof setTimeout>[] = [];
   private listeners: ((state: PlaybackState) => void)[] = [];
 
   constructor() {}
@@ -72,6 +73,8 @@ export class ScorePlayer {
       clearTimeout(this.playbackTimeout);
       this.playbackTimeout = null;
     }
+    this.secondaryTimeouts.forEach(t => clearTimeout(t));
+    this.secondaryTimeouts = [];
     audioEngine.stopAll();
     this.notify();
   }
@@ -85,6 +88,8 @@ export class ScorePlayer {
       clearTimeout(this.playbackTimeout);
       this.playbackTimeout = null;
     }
+    this.secondaryTimeouts.forEach(t => clearTimeout(t));
+    this.secondaryTimeouts = [];
     audioEngine.stopAll();
     this.notify();
   }
@@ -169,6 +174,43 @@ export class ScorePlayer {
 
       const playDuration = item.articulation === 'staccato' ? itemDurationSec * 0.45 : itemDurationSec * 0.95;
       audioEngine.playMidi(midi, playDuration, velocity);
+    }
+
+    // If multi-staff (Grand Staff), schedule secondary staves for this measure
+    if (this.currentItemIndex === 0 && this.score.staves.length > 1) {
+      this.secondaryTimeouts.forEach(t => clearTimeout(t));
+      this.secondaryTimeouts = [];
+
+      for (let sIdx = 1; sIdx < this.score.staves.length; sIdx++) {
+        const secStaff = this.score.staves[sIdx];
+        const secMeasure = secStaff?.measures[this.currentMeasureIndex];
+        if (secMeasure) {
+          let secBeatOffset = 0;
+          for (const secItem of secMeasure.items) {
+            let secBeats = getItemBeats(secItem.duration, secItem.isDotted);
+            if (secItem.type === 'rest' && secItem.duration === 'w' && secBeats > maxMeasureBeats) {
+              secBeats = maxMeasureBeats;
+            }
+            const secDuration = secBeats * beatDurationSec;
+
+            if (secItem.type === 'note' && secItem.pitch) {
+              const secMidi = pitchToMidi(secItem.pitch);
+              const delayMs = secBeatOffset * beatDurationSec * 1000;
+              if (delayMs === 0) {
+                audioEngine.playMidi(secMidi, secDuration * 0.95, 0.75);
+              } else {
+                const timeout = setTimeout(() => {
+                  if (this.isPlaying) {
+                    audioEngine.playMidi(secMidi, secDuration * 0.95, 0.75);
+                  }
+                }, delayMs);
+                this.secondaryTimeouts.push(timeout);
+              }
+            }
+            secBeatOffset += secBeats;
+          }
+        }
+      }
     }
 
     this.notify();

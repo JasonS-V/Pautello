@@ -3,6 +3,7 @@ import {
   Score,
   Clef,
   Pitch,
+  ScoreItem,
   NoteDuration,
   Accidental,
   NamingConvention,
@@ -28,9 +29,10 @@ interface ScoreViewProps {
   score: Score;
   selectedItemId: string | null;
   selectedMeasureIdx: number;
-  onSelectItem: (measureIdx: number, itemId: string | null) => void;
-  onInsertNoteAt: (measureIdx: number, pitch: Pitch) => void;
-  onInsertRestAt: (measureIdx: number) => void;
+  selectedStaffIdx?: number;
+  onSelectItem: (measureIdx: number, itemId: string | null, staffIdx?: number) => void;
+  onInsertNoteAt: (measureIdx: number, pitch: Pitch, staffIdx?: number) => void;
+  onInsertRestAt: (measureIdx: number, staffIdx?: number) => void;
   onDeleteMeasure: (idx: number) => void;
   activeDuration: NoteDuration;
   activeAccidental: Accidental;
@@ -47,6 +49,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
   score,
   selectedItemId,
   selectedMeasureIdx,
+  selectedStaffIdx = 0,
   onSelectItem,
   onInsertNoteAt,
   onInsertRestAt,
@@ -62,6 +65,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
 }) => {
   const [hoveredMeasureIdx, setHoveredMeasureIdx] = useState<number | null>(null);
   const [hoveredStaffStep, setHoveredStaffStep] = useState<number | null>(null);
+  const [hoveredStaffIdx, setHoveredStaffIdx] = useState<number>(0);
   const [hoveredX, setHoveredX] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,14 +75,26 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
     clef: 'treble' as Clef,
     measures: [],
   };
+  const isGrandStaff = score.staves.length > 1;
+  const lowerStaff = score.staves[1];
 
   const lineSpacing = 10;
   const staffHeight = 40;
   const staffTopOffset = 60; // Top padding for title & tempo
-  const systemHeight = showTablature ? 215 : 150; // Height per line of music
-  const tabTopOffset = staffTopOffset + staffHeight + 35;
-  const tabLineSpacing = 7.5;
+  const lowerStaffTopOffset = staffTopOffset + staffHeight + 45; // 145px (Middle C in classical grand staff sits at y=122.5)
 
+  const systemHeight = isGrandStaff
+    ? showTablature
+      ? 310
+      : 240
+    : showTablature
+    ? 215
+    : 150;
+
+  const tabTopOffset = isGrandStaff
+    ? lowerStaffTopOffset + staffHeight + 35
+    : staffTopOffset + staffHeight + 35;
+  const tabLineSpacing = 7.5;
 
   // Group measures into systems (lines of score). E.g. 3 measures per line
   const measuresPerSystem = 3;
@@ -112,7 +128,8 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
     return offsets;
   };
 
-  const keyOffsets = getKeySignatureOffsets(primaryStaff.clef);
+  const keyOffsetsTreble = getKeySignatureOffsets(primaryStaff.clef);
+  const keyOffsetsBass = isGrandStaff ? getKeySignatureOffsets(lowerStaff?.clef || 'bass') : [];
 
   const handleStaffMouseMove = (
     e: React.MouseEvent<SVGElement>,
@@ -122,13 +139,21 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
     const svgEl = e.currentTarget.ownerSVGElement || (e.currentTarget as unknown as SVGSVGElement);
     const svgRect = svgEl.getBoundingClientRect();
     const svgY = e.clientY - svgRect.top;
-    const relY = svgY - staffTopOffset;
     const svgX = e.clientX - svgRect.left;
     const relX = svgX - measureX;
+
+    let targetStaffIdx = 0;
+    let relY = svgY - staffTopOffset;
+
+    if (isGrandStaff && svgY > staffTopOffset + staffHeight + 22) {
+      targetStaffIdx = 1;
+      relY = svgY - lowerStaffTopOffset;
+    }
 
     const step = yToStaffStep(relY, lineSpacing);
     setHoveredMeasureIdx(mIdx);
     setHoveredStaffStep(step);
+    setHoveredStaffIdx(targetStaffIdx);
     setHoveredX(relX);
   };
 
@@ -140,26 +165,445 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
 
   const handleStaffClick = (mIdx: number) => {
     if (isRestMode) {
-      onInsertRestAt(mIdx);
+      onInsertRestAt(mIdx, hoveredStaffIdx);
       return;
     }
     if (hoveredStaffStep !== null) {
-      const pitch = staffStepToPitch(hoveredStaffStep, primaryStaff.clef, activeAccidental);
-      onInsertNoteAt(mIdx, pitch);
+      const targetClef = hoveredStaffIdx === 1 ? (lowerStaff?.clef || 'bass') : primaryStaff.clef;
+      const pitch = staffStepToPitch(hoveredStaffStep, targetClef, activeAccidental);
+      onInsertNoteAt(mIdx, pitch, hoveredStaffIdx);
     }
+  };
+
+  /**
+   * Renders the note & rest items for a specific staff in a measure
+   */
+  const renderStaffItems = (
+    targetItems: ScoreItem[],
+    targetClef: Clef,
+    baseTopOffset: number,
+    staffIdx: number,
+    actualMeasureIdx: number,
+    availableMeasureWidth: number
+  ) => {
+    const itemCount = targetItems.length;
+    const spacing = (availableMeasureWidth - 40) / Math.max(1, itemCount);
+
+    return targetItems.map((item, itemIdx) => {
+      const itemX = 20 + itemIdx * spacing + spacing * 0.4;
+      const isItemSelected = selectedItemId === item.id;
+      const isItemPlaying =
+        playbackState.isPlaying &&
+        playbackState.currentMeasureIndex === actualMeasureIdx &&
+        playbackState.currentItemIndex === itemIdx &&
+        staffIdx === 0;
+
+      if (item.type === 'rest') {
+        const restY = baseTopOffset + 20;
+        return (
+          <g
+            key={item.id}
+            transform={`translate(${itemX}, 0)`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectItem(actualMeasureIdx, item.id, staffIdx);
+            }}
+            className="cursor-pointer group"
+          >
+            {isItemSelected && (
+              <circle
+                cx="0"
+                cy={restY}
+                r="14"
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="2"
+                strokeDasharray="3 2"
+              />
+            )}
+
+            {item.duration === 'w' && (
+              <rect
+                x="-7"
+                y={baseTopOffset + 10}
+                width="14"
+                height="6"
+                fill="currentColor"
+                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
+              />
+            )}
+
+            {item.duration === 'h' && (
+              <rect
+                x="-7"
+                y={baseTopOffset + 14}
+                width="14"
+                height="6"
+                fill="currentColor"
+                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
+              />
+            )}
+
+            {item.duration === 'q' && (
+              <g
+                transform={`translate(-6, ${baseTopOffset + 8}) scale(0.85)`}
+                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
+              >
+                <path d={SVG_PATHS.quarterRest} />
+              </g>
+            )}
+
+            {item.duration === '8' && (
+              <g
+                transform={`translate(-6, ${baseTopOffset + 12}) scale(0.85)`}
+                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
+              >
+                <path d={SVG_PATHS.eighthRest} />
+              </g>
+            )}
+
+            {(item.duration === '16' || item.duration === '32') && (
+              <g
+                transform={`translate(-6, ${baseTopOffset + 10}) scale(0.85)`}
+                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
+              >
+                <path d={SVG_PATHS.eighthRest} />
+                <path d={SVG_PATHS.eighthRest} transform="translate(1, 7)" />
+              </g>
+            )}
+
+            {item.chord && (
+              <text
+                x="0"
+                y={baseTopOffset - 18}
+                textAnchor="middle"
+                className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
+              >
+                {item.chord}
+              </text>
+            )}
+          </g>
+        );
+      }
+
+      // Note item
+      if (!item.pitch) return null;
+      const staffStep = pitchToStaffStep(item.pitch, targetClef);
+      const noteY = baseTopOffset + staffStepToY(staffStep, lineSpacing);
+      const ledgerLines = getLedgerLines(staffStep);
+      const stemUp = staffStep > 4;
+
+      const isPracticeTarget =
+        practiceTargetNote?.measureIdx === actualMeasureIdx &&
+        practiceTargetNote?.itemIdx === itemIdx &&
+        staffIdx === 0;
+
+      return (
+        <g
+          key={item.id}
+          transform={`translate(${itemX}, 0)`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectItem(actualMeasureIdx, item.id, staffIdx);
+            audioEngine.playMidi(pitchToMidi(item.pitch!), 0.35);
+          }}
+          className="cursor-pointer group"
+        >
+          {/* Selected Halo Ring */}
+          {isItemSelected && (
+            <circle
+              cx="0"
+              cy={noteY}
+              r="13"
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="2.5"
+              className="animate-pulse"
+            />
+          )}
+
+          {/* Practice Target Ring */}
+          {isPracticeTarget && (
+            <g className="pointer-events-none">
+              <circle
+                cx="0"
+                cy={noteY}
+                r="18"
+                fill="none"
+                stroke={
+                  practiceHitResult === 'correct'
+                    ? '#22c55e'
+                    : practiceHitResult === 'incorrect'
+                    ? '#ef4444'
+                    : '#84cc16'
+                }
+                strokeWidth="3"
+                className="animate-ping opacity-75"
+              />
+              <circle
+                cx="0"
+                cy={noteY}
+                r="15"
+                fill="none"
+                stroke={
+                  practiceHitResult === 'correct'
+                    ? '#22c55e'
+                    : practiceHitResult === 'incorrect'
+                    ? '#ef4444'
+                    : '#bef264'
+                }
+                strokeWidth="2"
+              />
+            </g>
+          )}
+
+          {/* Ledger lines */}
+          {ledgerLines.map((lineY, lIdx) => (
+            <line
+              key={`ledger-${lIdx}`}
+              x1="-10"
+              y1={baseTopOffset + lineY * lineSpacing}
+              x2="10"
+              y2={baseTopOffset + lineY * lineSpacing}
+              stroke="currentColor"
+              strokeWidth="1.2"
+            />
+          ))}
+
+          {/* Accidental Glyph */}
+          {item.pitch.accidental && (
+            <g
+              transform={`translate(-14, ${noteY - 8}) scale(0.65)`}
+              className="fill-current text-slate-900 dark:text-slate-100"
+            >
+              <path
+                d={
+                  item.pitch.accidental === '#'
+                    ? SVG_PATHS.sharp
+                    : item.pitch.accidental === 'b'
+                    ? SVG_PATHS.flat
+                    : SVG_PATHS.natural
+                }
+                fill="currentColor"
+              />
+            </g>
+          )}
+
+          {/* Notehead */}
+          <ellipse
+            cx="0"
+            cy={noteY}
+            rx="6.5"
+            ry="4.5"
+            transform={`rotate(-22 0 ${noteY})`}
+            fill={
+              isPracticeTarget && practiceHitResult === 'correct'
+                ? '#22c55e'
+                : isPracticeTarget && practiceHitResult === 'incorrect'
+                ? '#ef4444'
+                : isItemPlaying
+                ? '#f59e0b'
+                : item.duration === 'w' || item.duration === 'h'
+                ? 'none'
+                : 'currentColor'
+            }
+            stroke={
+              isPracticeTarget && practiceHitResult === 'correct'
+                ? '#22c55e'
+                : isPracticeTarget && practiceHitResult === 'incorrect'
+                ? '#ef4444'
+                : isItemPlaying
+                ? '#f59e0b'
+                : 'currentColor'
+            }
+            strokeWidth={item.duration === 'w' || item.duration === 'h' ? '2.5' : '1'}
+            className="group-hover:opacity-80 transition-opacity"
+          />
+
+          {/* Stem */}
+          {item.duration !== 'w' && (
+            <line
+              x1={stemUp ? 5.8 : -5.8}
+              y1={noteY}
+              x2={stemUp ? 5.8 : -5.8}
+              y2={stemUp ? noteY - 30 : noteY + 30}
+              stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+              strokeWidth="1.5"
+            />
+          )}
+
+          {/* Flag(s) */}
+          {item.duration === '8' && (
+            <path
+              d={
+                stemUp
+                  ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 18} 12 ${noteY - 12}`
+                  : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 18} -12 ${noteY + 12}`
+              }
+              stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+              strokeWidth="2.5"
+              fill="none"
+            />
+          )}
+          {item.duration === '16' && (
+            <>
+              <path
+                d={
+                  stemUp
+                    ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 18} 12 ${noteY - 12}`
+                    : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 18} -12 ${noteY + 12}`
+                }
+                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+                strokeWidth="2.5"
+                fill="none"
+              />
+              <path
+                d={
+                  stemUp
+                    ? `M 5.8 ${noteY - 22} C 12 ${noteY - 18} 14 ${noteY - 10} 12 ${noteY - 4}`
+                    : `M -5.8 ${noteY + 22} C -12 ${noteY + 18} -14 ${noteY + 10} -12 ${noteY + 4}`
+                }
+                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+                strokeWidth="2.5"
+                fill="none"
+              />
+            </>
+          )}
+          {item.duration === '32' && (
+            <>
+              <path
+                d={
+                  stemUp
+                    ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 18} 12 ${noteY - 12}`
+                    : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 18} -12 ${noteY + 12}`
+                }
+                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+                strokeWidth="2.5"
+                fill="none"
+              />
+              <path
+                d={
+                  stemUp
+                    ? `M 5.8 ${noteY - 22} C 12 ${noteY - 18} 14 ${noteY - 10} 12 ${noteY - 4}`
+                    : `M -5.8 ${noteY + 22} C -12 ${noteY + 18} -14 ${noteY + 10} -12 ${noteY + 4}`
+                }
+                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+                strokeWidth="2.5"
+                fill="none"
+              />
+              <path
+                d={
+                  stemUp
+                    ? `M 5.8 ${noteY - 14} C 12 ${noteY - 10} 14 ${noteY - 2} 12 ${noteY + 4}`
+                    : `M -5.8 ${noteY + 14} C -12 ${noteY + 10} -14 ${noteY + 2} -12 ${noteY - 4}`
+                }
+                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
+                strokeWidth="2.5"
+                fill="none"
+              />
+            </>
+          )}
+
+          {/* Dotted Note Dot */}
+          {item.isDotted && (
+            <circle
+              cx="10"
+              cy={noteY - 1}
+              r="2"
+              fill={isItemPlaying ? '#f59e0b' : 'currentColor'}
+            />
+          )}
+
+          {/* Pedagogical Note Label */}
+          {showNoteNames && (
+            <text
+              x="0"
+              y={
+                item.lyric || noteY >= baseTopOffset + 40
+                  ? stemUp && item.duration !== 'w'
+                    ? noteY - 36
+                    : noteY - 14
+                  : stemUp
+                  ? noteY + 16
+                  : noteY - 14
+              }
+              textAnchor="middle"
+              className="text-[10px] font-bold fill-blue-600 dark:fill-blue-400 select-none pointer-events-none"
+            >
+              {formatPitchName(item.pitch, namingConvention)}
+            </text>
+          )}
+
+          {/* Lyrics beneath staff */}
+          {item.lyric && (
+            <text
+              x="0"
+              y={baseTopOffset + staffHeight + 25}
+              textAnchor="middle"
+              className="text-[11px] font-serif italic fill-slate-800 dark:fill-slate-200 select-none"
+            >
+              {item.lyric}
+            </text>
+          )}
+
+          {/* Chord symbol above staff */}
+          {item.chord && (
+            <text
+              x="0"
+              y={baseTopOffset - 18}
+              textAnchor="middle"
+              className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
+            >
+              {item.chord}
+            </text>
+          )}
+
+          {/* Guitar Tablature Fret Number (only for staff 0) */}
+          {showTablature && staffIdx === 0 && (() => {
+            const tabPos = pitchToGuitarTab(item.pitch);
+            if (!tabPos) return null;
+            const tabY = tabTopOffset + (tabPos.stringNumber - 1) * tabLineSpacing;
+            return (
+              <g className="pointer-events-none select-none">
+                <rect
+                  x="-6"
+                  y={tabY - 5.5}
+                  width="12"
+                  height="11"
+                  rx="2"
+                  className="fill-white dark:fill-[#161922]"
+                />
+                <text
+                  x="0"
+                  y={tabY + 3.5}
+                  textAnchor="middle"
+                  className={`text-[9.5px] font-mono font-bold select-none ${
+                    isItemPlaying
+                      ? 'fill-amber-500 font-black'
+                      : 'fill-slate-800 dark:fill-slate-200'
+                  }`}
+                >
+                  {tabPos.fret}
+                </text>
+              </g>
+            );
+          })()}
+        </g>
+      );
+    });
   };
 
   return (
     <div
       ref={containerRef}
-      onClick={() => onSelectItem(selectedMeasureIdx, null)}
+      onClick={() => onSelectItem(selectedMeasureIdx, null, selectedStaffIdx)}
       className="flex-1 overflow-auto bg-slate-100 dark:bg-[#0c0d12] p-3 sm:p-6 flex justify-center items-start select-none"
     >
       {/* Paper Sheet container */}
       <div
         onClick={(e) => {
           e.stopPropagation();
-          onSelectItem(selectedMeasureIdx, null);
+          onSelectItem(selectedMeasureIdx, null, selectedStaffIdx);
         }}
         className="score-sheet bg-white dark:bg-[#161922] text-slate-900 dark:text-slate-100 shadow-xl rounded-2xl p-6 sm:p-8 min-w-[780px] max-w-[960px] border border-slate-200 dark:border-[#232836] transition-colors"
       >
@@ -191,6 +635,12 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
           const headerWidth = isFirstSystem ? 110 : 60;
           const availableMeasureWidth = (systemWidth - headerWidth) / systemMeasures.length;
 
+          const systemBottomY = isGrandStaff
+            ? lowerStaffTopOffset + staffHeight
+            : showTablature
+            ? tabTopOffset + 5 * tabLineSpacing
+            : staffTopOffset + staffHeight;
+
           return (
             <div key={`system-${systemIdx}`} className="relative mb-12">
               <svg
@@ -199,58 +649,98 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                 className="overflow-visible cursor-pointer"
                 onMouseLeave={handleStaffMouseLeave}
               >
-                {/* System Bracket & Start Barline */}
-                <line
-                  x1={2}
-                  y1={staffTopOffset}
-                  x2={2}
-                  y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                />
+                {/* Grand Staff Piano Brace */}
+                {isGrandStaff && (
+                  <g className="grand-staff-brace select-none">
+                    {/* Curly decorative bracket curve */}
+                    <path
+                      d={`M 12 ${staffTopOffset}
+                         C 2 ${staffTopOffset + 20}, 0 ${staffTopOffset + 45}, -7 ${staffTopOffset + 62.5}
+                         C 0 ${staffTopOffset + 80}, 2 ${staffTopOffset + 105}, 12 ${lowerStaffTopOffset + staffHeight}
+                         C 6 ${staffTopOffset + 105}, 4 ${staffTopOffset + 80}, -2 ${staffTopOffset + 62.5}
+                         C 4 ${staffTopOffset + 45}, 6 ${staffTopOffset + 20}, 12 ${staffTopOffset} Z`}
+                      className="fill-slate-800 dark:fill-slate-200"
+                    />
+                    <line
+                      x1={12}
+                      y1={staffTopOffset}
+                      x2={12}
+                      y2={lowerStaffTopOffset + staffHeight}
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+                  </g>
+                )}
 
-                {/* 5 Horizontal Staff Lines */}
+                {/* System Bracket & Start Barline */}
+                {!isGrandStaff && (
+                  <line
+                    x1={2}
+                    y1={staffTopOffset}
+                    x2={2}
+                    y2={systemBottomY}
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  />
+                )}
+
+                {/* 5 Horizontal Staff Lines (Upper Staff / Treble) */}
                 {[0, 1, 2, 3, 4].map((lineIdx) => (
                   <line
-                    key={`line-${lineIdx}`}
+                    key={`upper-line-${lineIdx}`}
                     x1={0}
                     y1={staffTopOffset + lineIdx * lineSpacing}
                     x2={systemWidth}
                     y2={staffTopOffset + lineIdx * lineSpacing}
                     stroke="currentColor"
                     strokeWidth="1.2"
-                    className="text-slate-300 dark:text-slate-700"
+                    className="text-slate-300 dark:text-slate-700/80"
                   />
                 ))}
 
-                {/* 6 Horizontal Tablature Lines (Optional Guitar TAB) */}
+                {/* 5 Horizontal Staff Lines (Lower Staff / Bass for Grand Staff) */}
+                {isGrandStaff &&
+                  [0, 1, 2, 3, 4].map((lineIdx) => (
+                    <line
+                      key={`lower-line-${lineIdx}`}
+                      x1={0}
+                      y1={lowerStaffTopOffset + lineIdx * lineSpacing}
+                      x2={systemWidth}
+                      y2={lowerStaffTopOffset + lineIdx * lineSpacing}
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      className="text-slate-300 dark:text-slate-700/80"
+                    />
+                  ))}
+
+                {/* 6 Horizontal Guitar Tablature Lines */}
                 {showTablature && (
                   <>
-                    {[0, 1, 2, 3, 4, 5].map((tIdx) => (
+                    <text
+                      x="8"
+                      y={tabTopOffset + 15}
+                      className="text-[10px] font-mono font-black fill-slate-400 select-none tracking-widest"
+                      style={{ writingMode: 'vertical-rl' }}
+                    >
+                      TAB
+                    </text>
+                    {[0, 1, 2, 3, 4, 5].map((tabLineIdx) => (
                       <line
-                        key={`tab-line-${tIdx}`}
+                        key={`tab-line-${tabLineIdx}`}
                         x1={0}
-                        y1={tabTopOffset + tIdx * tabLineSpacing}
+                        y1={tabTopOffset + tabLineIdx * tabLineSpacing}
                         x2={systemWidth}
-                        y2={tabTopOffset + tIdx * tabLineSpacing}
+                        y2={tabTopOffset + tabLineIdx * tabLineSpacing}
                         stroke="currentColor"
                         strokeWidth="1"
-                        className="text-slate-300/80 dark:text-slate-700/80"
+                        strokeDasharray={tabLineIdx === 0 || tabLineIdx === 5 ? 'none' : 'none'}
+                        className="text-slate-300/80 dark:text-slate-700/60"
                       />
                     ))}
-                    {/* TAB label on header */}
-                    <g
-                      transform={`translate(14, ${tabTopOffset + 8})`}
-                      className="font-mono font-black text-[9px] fill-slate-400 dark:fill-slate-500 select-none tracking-widest leading-none pointer-events-none"
-                    >
-                      <text x="0" y="0">T</text>
-                      <text x="0" y="12">A</text>
-                      <text x="0" y="24">B</text>
-                    </g>
                   </>
                 )}
 
-                {/* Clef Glyph */}
+                {/* Upper Clef Glyph */}
                 <g
                   transform={`translate(8, ${
                     primaryStaff.clef === 'bass'
@@ -279,9 +769,9 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                   )}
                 </g>
 
-                {/* Key Signature Accidentals */}
+                {/* Upper Key Signature Accidentals */}
                 <g transform={`translate(${primaryStaff.clef === 'bass' ? 44 : 48}, 0)`}>
-                  {keyOffsets.map((kOff, kIdx) => {
+                  {keyOffsetsTreble.map((kOff, kIdx) => {
                     const ky = staffTopOffset + staffStepToY(kOff.step, lineSpacing);
                     return (
                       <g
@@ -298,7 +788,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                   })}
                 </g>
 
-                {/* Time Signature (on first system only) */}
+                {/* Upper Time Signature (on first system only) */}
                 {isFirstSystem && (
                   <g
                     transform={`translate(${headerWidth - 28}, ${staffTopOffset + 18})`}
@@ -313,6 +803,63 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                   </g>
                 )}
 
+                {/* Lower Staff Clef & Key/Time Signature for Grand Staff */}
+                {isGrandStaff && (
+                  <>
+                    <g
+                      transform={`translate(8, ${lowerStaffTopOffset - 2}) scale(0.72)`}
+                      className="text-slate-900 dark:text-slate-100"
+                    >
+                      <path
+                        d={
+                          (lowerStaff?.clef || 'bass') === 'bass'
+                            ? SVG_PATHS.bassClef
+                            : SVG_PATHS.trebleClef
+                        }
+                        fill="currentColor"
+                      />
+                      {(lowerStaff?.clef || 'bass') === 'bass' && (
+                        <>
+                          <circle cx="28" cy="18" r="2.2" fill="currentColor" />
+                          <circle cx="28" cy="27" r="2.2" fill="currentColor" />
+                        </>
+                      )}
+                    </g>
+
+                    <g transform={`translate(44, 0)`}>
+                      {keyOffsetsBass.map((kOff, kIdx) => {
+                        const ky = lowerStaffTopOffset + staffStepToY(kOff.step, lineSpacing);
+                        return (
+                          <g
+                            key={`key-acc-bass-${kIdx}`}
+                            transform={`translate(${kIdx * 9}, ${ky - 10}) scale(0.6)`}
+                            className="text-slate-800 dark:text-slate-200"
+                          >
+                            <path
+                              d={kOff.type === '#' ? SVG_PATHS.sharp : SVG_PATHS.flat}
+                              fill="currentColor"
+                            />
+                          </g>
+                        );
+                      })}
+                    </g>
+
+                    {isFirstSystem && (
+                      <g
+                        transform={`translate(${headerWidth - 28}, ${lowerStaffTopOffset + 18})`}
+                        className="font-serif font-bold text-lg fill-current select-none"
+                      >
+                        <text x="0" y="0" textAnchor="middle" className="text-[17px]">
+                          {score.timeSignature.beats}
+                        </text>
+                        <text x="0" y="19" textAnchor="middle" className="text-[17px]">
+                          {score.timeSignature.beatType}
+                        </text>
+                      </g>
+                    )}
+                  </>
+                )}
+
                 {/* Measures in this System */}
                 {systemMeasures.map((measure, mSubIdx) => {
                   const actualMeasureIdx = startMeasureIdx + mSubIdx;
@@ -321,6 +868,10 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                   const isPlayingMeasure =
                     playbackState.isPlaying &&
                     playbackState.currentMeasureIndex === actualMeasureIdx;
+
+                  const lowerMeasure = isGrandStaff
+                    ? lowerStaff?.measures[actualMeasureIdx]
+                    : undefined;
 
                   return (
                     <g
@@ -337,7 +888,11 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                         x={0}
                         y={staffTopOffset - 25}
                         width={availableMeasureWidth}
-                        height={staffHeight + 50}
+                        height={
+                          isGrandStaff
+                            ? lowerStaffTopOffset + staffHeight - staffTopOffset + 45
+                            : staffHeight + 50
+                        }
                         fill="transparent"
                         className="measure-hotspot hover:fill-blue-500/5 dark:hover:fill-blue-500/10 transition-colors no-print"
                       />
@@ -351,13 +906,17 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                         {actualMeasureIdx + 1}
                       </text>
 
-                      {/* Selected / Playing Measure highlight border */}
+                      {/* Selected Measure Visual Frame */}
                       {isSelectedMeasure && (
                         <rect
                           x={0}
                           y={staffTopOffset - 12}
                           width={availableMeasureWidth}
-                          height={staffHeight + 24}
+                          height={
+                            isGrandStaff
+                              ? lowerStaffTopOffset + staffHeight - staffTopOffset + 24
+                              : staffHeight + 24
+                          }
                           fill="none"
                           stroke="#3b82f6"
                           strokeWidth="1.5"
@@ -367,434 +926,27 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                         />
                       )}
 
-                      {/* Measure Notes / Rests */}
-                      {measure.items.map((item, itemIdx) => {
-                        // Distribute items evenly within the measure
-                        const itemCount = measure.items.length;
-                        const spacing = (availableMeasureWidth - 40) / Math.max(1, itemCount);
-                        const itemX = 20 + itemIdx * spacing + spacing * 0.4;
-                        const isItemSelected = selectedItemId === item.id;
-                        const isItemPlaying =
-                          playbackState.isPlaying &&
-                          playbackState.currentMeasureIndex === actualMeasureIdx &&
-                          playbackState.currentItemIndex === itemIdx;
+                      {/* Upper Staff Items (Mano Derecha / Melodía) */}
+                      {renderStaffItems(
+                        measure.items,
+                        primaryStaff.clef,
+                        staffTopOffset,
+                        0,
+                        actualMeasureIdx,
+                        availableMeasureWidth
+                      )}
 
-                        if (item.type === 'rest') {
-                          // Draw Rest
-                          let restY = staffTopOffset + 20;
-                          return (
-                            <g
-                              key={item.id}
-                              transform={`translate(${itemX}, 0)`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectItem(actualMeasureIdx, item.id);
-                              }}
-                              className="cursor-pointer group"
-                            >
-                              {isItemSelected && (
-                                <circle
-                                  cx="0"
-                                  cy={restY}
-                                  r="14"
-                                  fill="none"
-                                  stroke="#2563eb"
-                                  strokeWidth="2"
-                                  strokeDasharray="3 2"
-                                />
-                              )}
-
-                              {item.duration === 'w' && (
-                                <rect
-                                  x="-7"
-                                  y={staffTopOffset + 10}
-                                  width="14"
-                                  height="6"
-                                  fill="currentColor"
-                                  className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                                />
-                              )}
-
-                              {item.duration === 'h' && (
-                                <rect
-                                  x="-7"
-                                  y={staffTopOffset + 14}
-                                  width="14"
-                                  height="6"
-                                  fill="currentColor"
-                                  className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                                />
-                              )}
-
-                              {item.duration === 'q' && (
-                                <g
-                                  transform={`translate(-6, ${staffTopOffset + 8}) scale(0.85)`}
-                                  className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                                >
-                                  <path d={SVG_PATHS.quarterRest} />
-                                </g>
-                              )}
-
-                              {item.duration === '8' && (
-                                <g
-                                  transform={`translate(-6, ${staffTopOffset + 12}) scale(0.85)`}
-                                  className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                                >
-                                  <path d={SVG_PATHS.eighthRest} />
-                                </g>
-                              )}
-
-                              {(item.duration === '16' || item.duration === '32') && (
-                                <g
-                                  transform={`translate(-6, ${staffTopOffset + 10}) scale(0.85)`}
-                                  className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                                >
-                                  <path d={SVG_PATHS.eighthRest} />
-                                  <path d={SVG_PATHS.eighthRest} transform="translate(1, 7)" />
-                                </g>
-                              )}
-
-                              {/* Chord symbol above staff */}
-                              {item.chord && (
-                                <text
-                                  x="0"
-                                  y={staffTopOffset - 18}
-                                  textAnchor="middle"
-                                  className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
-                                >
-                                  {item.chord}
-                                </text>
-                              )}
-                            </g>
-                          );
-                        }
-
-                        // It's a note
-                        if (!item.pitch) return null;
-                        const staffStep = pitchToStaffStep(item.pitch, primaryStaff.clef);
-                        const noteY = staffTopOffset + staffStepToY(staffStep, lineSpacing);
-                        const ledgerLines = getLedgerLines(staffStep);
-                        const stemUp = staffStep > 4; // Below middle line: stem points UP
-
-                        return (
-                          <g
-                            key={item.id}
-                            transform={`translate(${itemX}, 0)`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectItem(actualMeasureIdx, item.id);
-                              audioEngine.playMidi(pitchToMidi(item.pitch!), 0.35);
-                            }}
-                            className="cursor-pointer group"
-                          >
-                            {/* Selected Halo Ring */}
-                            {isItemSelected && (
-                              <circle
-                                cx="0"
-                                cy={noteY}
-                                r="13"
-                                fill="none"
-                                stroke="#f59e0b"
-                                strokeWidth="2.5"
-                                className="animate-pulse"
-                              />
-                            )}
-
-                            {/* Practice Target Pulsing Ring */}
-                            {practiceTargetNote &&
-                              practiceTargetNote.measureIdx === actualMeasureIdx &&
-                              practiceTargetNote.itemIdx === itemIdx && (
-                                <g className="pointer-events-none">
-                                  <circle
-                                    cx="0"
-                                    cy={noteY}
-                                    r="18"
-                                    fill="none"
-                                    stroke="#84cc16"
-                                    strokeWidth="2.5"
-                                    className="animate-ping opacity-75"
-                                  />
-                                  <circle
-                                    cx="0"
-                                    cy={noteY}
-                                    r="15"
-                                    fill="#bef264"
-                                    fillOpacity="0.25"
-                                    stroke="#65a30d"
-                                    strokeWidth="2"
-                                    strokeDasharray="3 2"
-                                  />
-                                  <text
-                                    x="0"
-                                    y={noteY - 24}
-                                    textAnchor="middle"
-                                    className="text-[9px] font-black font-sans fill-lime-600 dark:fill-[#bef264] select-none"
-                                  >
-                                    🎯 TOCA
-                                  </text>
-                                  {practiceHitResult === 'correct' && (
-                                    <circle
-                                      cx="0"
-                                      cy={noteY}
-                                      r="24"
-                                      fill="none"
-                                      stroke="#22c55e"
-                                      strokeWidth="3.5"
-                                      className="animate-pulse"
-                                    />
-                                  )}
-                                  {practiceHitResult === 'incorrect' && (
-                                    <circle
-                                      cx="0"
-                                      cy={noteY}
-                                      r="20"
-                                      fill="none"
-                                      stroke="#ef4444"
-                                      strokeWidth="3"
-                                      strokeDasharray="3 2"
-                                      className="animate-pulse"
-                                    />
-                                  )}
-                                </g>
-                              )}
-
-                            {/* Playing Highlight Circle */}
-                            {isItemPlaying && (
-                              <circle
-                                cx="0"
-                                cy={noteY}
-                                r="15"
-                                fill="#f59e0b"
-                                fillOpacity="0.3"
-                                className="animate-ping"
-                              />
-                            )}
-
-                            {/* Ledger Lines */}
-                            {ledgerLines.map((lL) => {
-                              const ly = staffTopOffset + staffStepToY(lL, lineSpacing);
-                              return (
-                                <line
-                                  key={`ledger-${lL}`}
-                                  x1="-10"
-                                  y1={ly}
-                                  x2="10"
-                                  y2={ly}
-                                  stroke="currentColor"
-                                  strokeWidth="1.4"
-                                  className="text-slate-400 dark:text-slate-600"
-                                />
-                              );
-                            })}
-
-                            {/* Accidental (#, b, n) */}
-                            {item.pitch.accidental && (
-                              <g
-                                transform={`translate(-17, ${noteY - 10}) scale(0.65)`}
-                                className={isItemPlaying ? 'fill-amber-500' : 'fill-current'}
-                              >
-                                <path
-                                  d={
-                                    item.pitch.accidental === '#'
-                                      ? SVG_PATHS.sharp
-                                      : item.pitch.accidental === 'b'
-                                      ? SVG_PATHS.flat
-                                      : SVG_PATHS.natural
-                                  }
-                                />
-                              </g>
-                            )}
-
-                            {/* Notehead */}
-                            <ellipse
-                              cx="0"
-                              cy={noteY}
-                              rx="6.5"
-                              ry="4.5"
-                              transform={`rotate(-22 0 ${noteY})`}
-                              fill={
-                                item.duration === 'w' || item.duration === 'h'
-                                  ? 'none'
-                                  : isItemPlaying
-                                  ? '#f59e0b'
-                                  : 'currentColor'
-                              }
-                              stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                              strokeWidth={item.duration === 'w' || item.duration === 'h' ? '2.2' : '0'}
-                              className="transition-colors"
-                            />
-
-                            {/* Stem (for notes other than whole note) */}
-                            {item.duration !== 'w' && (
-                              <line
-                                x1={stemUp ? 5.8 : -5.8}
-                                y1={noteY}
-                                x2={stemUp ? 5.8 : -5.8}
-                                y2={stemUp ? noteY - 30 : noteY + 30}
-                                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                strokeWidth="1.5"
-                              />
-                            )}
-
-                            {/* Eighth / Sixteenth / 32nd Flags */}
-                            {item.duration === '8' && (
-                              <path
-                                d={
-                                  stemUp
-                                    ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 16} 12 ${noteY - 10}`
-                                    : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 16} -12 ${noteY + 10}`
-                                }
-                                stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                strokeWidth="2.5"
-                                fill="none"
-                              />
-                            )}
-                            {item.duration === '16' && (
-                              <>
-                                <path
-                                  d={
-                                    stemUp
-                                      ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 18} 12 ${noteY - 12}`
-                                      : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 18} -12 ${noteY + 12}`
-                                  }
-                                  stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                  strokeWidth="2.5"
-                                  fill="none"
-                                />
-                                <path
-                                  d={
-                                    stemUp
-                                      ? `M 5.8 ${noteY - 22} C 12 ${noteY - 18} 14 ${noteY - 10} 12 ${noteY - 4}`
-                                      : `M -5.8 ${noteY + 22} C -12 ${noteY + 18} -14 ${noteY + 10} -12 ${noteY + 4}`
-                                  }
-                                  stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                  strokeWidth="2.5"
-                                  fill="none"
-                                />
-                              </>
-                            )}
-                            {item.duration === '32' && (
-                              <>
-                                <path
-                                  d={
-                                    stemUp
-                                      ? `M 5.8 ${noteY - 30} C 12 ${noteY - 26} 14 ${noteY - 18} 12 ${noteY - 12}`
-                                      : `M -5.8 ${noteY + 30} C -12 ${noteY + 26} -14 ${noteY + 18} -12 ${noteY + 12}`
-                                  }
-                                  stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                  strokeWidth="2.5"
-                                  fill="none"
-                                />
-                                <path
-                                  d={
-                                    stemUp
-                                      ? `M 5.8 ${noteY - 22} C 12 ${noteY - 18} 14 ${noteY - 10} 12 ${noteY - 4}`
-                                      : `M -5.8 ${noteY + 22} C -12 ${noteY + 18} -14 ${noteY + 10} -12 ${noteY + 4}`
-                                  }
-                                  stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                  strokeWidth="2.5"
-                                  fill="none"
-                                />
-                                <path
-                                  d={
-                                    stemUp
-                                      ? `M 5.8 ${noteY - 14} C 12 ${noteY - 10} 14 ${noteY - 2} 12 ${noteY + 4}`
-                                      : `M -5.8 ${noteY + 14} C -12 ${noteY + 10} -14 ${noteY + 2} -12 ${noteY - 4}`
-                                  }
-                                  stroke={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                                  strokeWidth="2.5"
-                                  fill="none"
-                                />
-                              </>
-                            )}
-
-                            {/* Dotted Note Dot */}
-                            {item.isDotted && (
-                              <circle
-                                cx="10"
-                                cy={noteY - 1}
-                                r="2"
-                                fill={isItemPlaying ? '#f59e0b' : 'currentColor'}
-                              />
-                            )}
-
-                            {/* Pedagogical Note Label (Do-Re-Mi or C-D-E) - Avoid collision with lyrics beneath staff */}
-                            {showNoteNames && (
-                              <text
-                                x="0"
-                                y={
-                                  item.lyric || noteY >= 80
-                                    ? stemUp && item.duration !== 'w'
-                                      ? noteY - 36
-                                      : noteY - 14
-                                    : stemUp
-                                    ? noteY + 16
-                                    : noteY - 14
-                                }
-                                textAnchor="middle"
-                                className="text-[10px] font-bold fill-blue-600 dark:fill-blue-400 select-none pointer-events-none"
-                              >
-                                {formatPitchName(item.pitch, namingConvention)}
-                              </text>
-                            )}
-
-                            {/* Lyrics beneath staff */}
-                            {item.lyric && (
-                              <text
-                                x="0"
-                                y={staffTopOffset + staffHeight + 25}
-                                textAnchor="middle"
-                                className="text-[11px] font-serif italic fill-slate-800 dark:fill-slate-200 select-none"
-                              >
-                                {item.lyric}
-                              </text>
-                            )}
-
-                            {/* Chord symbol above staff */}
-                            {item.chord && (
-                              <text
-                                x="0"
-                                y={staffTopOffset - 18}
-                                textAnchor="middle"
-                                className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
-                              >
-                                {item.chord}
-                              </text>
-                            )}
-
-                            {/* Guitar Tablature Fret Number */}
-                            {showTablature && (() => {
-                              const tabPos = pitchToGuitarTab(item.pitch);
-                              if (!tabPos) return null;
-                              const tabY = tabTopOffset + (tabPos.stringNumber - 1) * tabLineSpacing;
-                              return (
-                                <g className="pointer-events-none select-none">
-                                  <rect
-                                    x="-6"
-                                    y={tabY - 5.5}
-                                    width="12"
-                                    height="11"
-                                    rx="2"
-                                    className="fill-white dark:fill-[#161922]"
-                                  />
-                                  <text
-                                    x="0"
-                                    y={tabY + 3.5}
-                                    textAnchor="middle"
-                                    className={`text-[9.5px] font-mono font-bold select-none ${
-                                      isItemPlaying
-                                        ? 'fill-amber-500 font-black'
-                                        : 'fill-slate-800 dark:fill-slate-200'
-                                    }`}
-                                  >
-                                    {tabPos.fret}
-                                  </text>
-                                </g>
-                              );
-                            })()}
-                          </g>
-                        );
-                      })}
+                      {/* Lower Staff Items for Grand Staff (Mano Izquierda) */}
+                      {isGrandStaff &&
+                        lowerMeasure &&
+                        renderStaffItems(
+                          lowerMeasure.items,
+                          lowerStaff?.clef || 'bass',
+                          lowerStaffTopOffset,
+                          1,
+                          actualMeasureIdx,
+                          availableMeasureWidth
+                        )}
 
                       {/* Ghost Note Preview on Hover */}
                       {hoveredMeasureIdx === actualMeasureIdx &&
@@ -811,25 +963,35 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                             {/* Ghost notehead */}
                             <ellipse
                               cx="0"
-                              cy={staffTopOffset + staffStepToY(hoveredStaffStep, lineSpacing)}
+                              cy={
+                                (hoveredStaffIdx === 1 ? lowerStaffTopOffset : staffTopOffset) +
+                                staffStepToY(hoveredStaffStep, lineSpacing)
+                              }
                               rx="6.5"
                               ry="4.5"
                               transform={`rotate(-22 0 ${
-                                staffTopOffset + staffStepToY(hoveredStaffStep, lineSpacing)
+                                (hoveredStaffIdx === 1 ? lowerStaffTopOffset : staffTopOffset) +
+                                staffStepToY(hoveredStaffStep, lineSpacing)
                               })`}
                               fill="currentColor"
                             />
                             {/* Ghost tooltip showing note name */}
                             <text
                               x="0"
-                              y={staffTopOffset + staffStepToY(hoveredStaffStep, lineSpacing) - 10}
+                              y={
+                                (hoveredStaffIdx === 1 ? lowerStaffTopOffset : staffTopOffset) +
+                                staffStepToY(hoveredStaffStep, lineSpacing) -
+                                10
+                              }
                               textAnchor="middle"
                               className="text-[10px] font-bold fill-blue-600 dark:fill-blue-400"
                             >
                               {formatPitchName(
                                 staffStepToPitch(
                                   hoveredStaffStep,
-                                  primaryStaff.clef,
+                                  hoveredStaffIdx === 1
+                                    ? lowerStaff?.clef || 'bass'
+                                    : primaryStaff.clef,
                                   activeAccidental
                                 ),
                                 namingConvention
@@ -864,7 +1026,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                   0.4
                               : 10
                           }
-                          y2={showTablature ? tabTopOffset + 5 * tabLineSpacing + 10 : staffTopOffset + staffHeight + 10}
+                          y2={systemBottomY + 6}
                           stroke="#f59e0b"
                           strokeWidth="2.5"
                           className="pointer-events-none"
@@ -876,7 +1038,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                         x1={availableMeasureWidth}
                         y1={staffTopOffset}
                         x2={availableMeasureWidth}
-                        y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
+                        y2={systemBottomY}
                         stroke="currentColor"
                         strokeWidth={actualMeasureIdx === totalMeasures - 1 ? '3' : '1.2'}
                         className="text-slate-400 dark:text-slate-600"
@@ -886,7 +1048,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                           x1={availableMeasureWidth - 4}
                           y1={staffTopOffset}
                           x2={availableMeasureWidth - 4}
-                          y2={showTablature ? tabTopOffset + 5 * tabLineSpacing : staffTopOffset + staffHeight}
+                          y2={systemBottomY}
                           stroke="currentColor"
                           strokeWidth="1"
                           className="text-slate-400 dark:text-slate-600"
@@ -921,10 +1083,15 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
         <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span className="font-medium">💡 Guía Rápida:</span>
-            <span>Haz clic en el pentagrama para insertar notas. Usa las teclas A-G o el piano inferior.</span>
+            <span>
+              {isGrandStaff
+                ? 'Piano activo: haz clic en pentagrama superior (Sol) o inferior (Fa) para colocar notas.'
+                : 'Haz clic en el pentagrama para insertar notas. Usa las teclas A-G o el piano inferior.'}
+            </span>
           </div>
           <div className="text-[11px] font-mono text-slate-400">
-            Total compases: {totalMeasures} • Clave: {primaryStaff.clef.toUpperCase()}
+            Total compases: {totalMeasures} • Sistema:{' '}
+            {isGrandStaff ? 'Gran Pentagrama (Piano)' : `Clave ${primaryStaff.clef.toUpperCase()}`}
           </div>
         </div>
       </div>

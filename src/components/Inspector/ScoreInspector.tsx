@@ -47,6 +47,8 @@ interface ScoreInspectorProps {
   onUndo: () => void;
   onRedo: () => void;
   onOpenExport: () => void;
+  isGrandStaff?: boolean;
+  onToggleGrandStaff?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
@@ -80,19 +82,25 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   onUndo,
   onRedo,
   onOpenExport,
+  isGrandStaff = false,
+  onToggleGrandStaff,
   isCollapsed = false,
   onToggleCollapse,
 }) => {
   const [autoTransposeNotes, setAutoTransposeNotes] = useState<boolean>(true);
 
-  // Find selected item if any
-  const primaryStaff = score.staves[0];
+  // Find selected item across all staves
   let selectedItem: ScoreItem | null = null;
-  if (primaryStaff && primaryStaff.measures[selectedMeasureIdx]) {
-    selectedItem =
-      primaryStaff.measures[selectedMeasureIdx].items.find(
+  for (const staff of score.staves) {
+    if (staff.measures[selectedMeasureIdx]) {
+      const found = staff.measures[selectedMeasureIdx].items.find(
         (it) => it.id === selectedItemId
-      ) || null;
+      );
+      if (found) {
+        selectedItem = found;
+        break;
+      }
+    }
   }
 
   const durationOptions: { key: NoteDuration; symbol: string; label: string }[] = [
@@ -501,6 +509,23 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
         </div>
 
         <div className="space-y-2 text-xs">
+          {/* Staff System / Grand Staff Toggle */}
+          {onToggleGrandStaff && (
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/70 dark:border-slate-800/70">
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Sistema:</span>
+              <button
+                onClick={onToggleGrandStaff}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                  isGrandStaff
+                    ? 'bg-purple-600 dark:bg-[#c4b5fd] text-white dark:text-slate-950 shadow-xs'
+                    : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-[#2a3044]'
+                }`}
+              >
+                {isGrandStaff ? '🎹 Piano (Gran Pentagrama)' : 'Voz / Pentagrama Único'}
+              </button>
+            </div>
+          )}
+
           {/* Clef selector */}
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Clave:</span>
