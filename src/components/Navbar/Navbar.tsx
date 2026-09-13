@@ -10,6 +10,7 @@ import {
   Clock,
   Menu,
   PanelRight,
+  Upload,
 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
@@ -35,6 +36,7 @@ interface NavbarProps {
   onLoadTemplate: (template: ScoreTemplate) => void;
   onOpenMobileMenu?: () => void;
   onToggleInspector?: () => void;
+  onOpenImport?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -56,6 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLoadTemplate,
   onOpenMobileMenu,
   onToggleInspector,
+  onOpenImport,
 }) => {
   const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
@@ -107,7 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Right controls: Playback & Audio Deck */}
       <div className="flex items-center flex-wrap gap-2.5">
         {/* Playback Transport Pill Deck */}
-        <div className="flex items-center gap-1.5 bg-white dark:bg-[#161922] p-1.5 rounded-2xl border border-slate-200 dark:border-[#232836] shadow-xs">
+        <div id="navbar-transport" className="flex items-center gap-1.5 bg-white dark:bg-[#161922] p-1.5 rounded-2xl border border-slate-200 dark:border-[#232836] shadow-xs">
           {/* Main Play/Pause Button in Bright Amber from reference */}
           <button
             onClick={onTogglePlay}
@@ -206,6 +209,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
           </div>
         </div>
+
+        {/* Import Score Button */}
+        {onOpenImport && (
+          <button
+            onClick={onOpenImport}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
+            title="Importar partitura (.musicxml, .xml, .mid o .json)"
+          >
+            <Upload className="w-3.5 h-3.5 text-blue-500" />
+            <span>Importar</span>
+          </button>
+        )}
 
         {/* Templates Quick Menu Dropdown */}
         <div className="relative group">

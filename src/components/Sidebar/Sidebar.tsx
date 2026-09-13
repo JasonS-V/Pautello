@@ -12,6 +12,8 @@ import {
   Sparkles,
   X,
   Sliders,
+  Upload,
+  GraduationCap,
 } from 'lucide-react';
 import { NamingConvention } from '../../types/music';
 
@@ -31,8 +33,10 @@ interface SidebarProps {
   onOpenTemplates: () => void;
   onOpenMixer: () => void;
   onOpenExport: () => void;
+  onOpenImport: () => void;
   onOpenShortcuts: () => void;
   onOpenDonate: () => void;
+  onOpenTutorial: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -51,8 +55,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTemplates,
   onOpenMixer,
   onOpenExport,
+  onOpenImport,
   onOpenShortcuts,
   onOpenDonate,
+  onOpenTutorial,
   isOpenMobile = false,
   onCloseMobile,
 }) => {
@@ -198,6 +204,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </button>
 
+            {/* Tab: Importar */}
+            <button
+              onClick={() => {
+                onOpenImport();
+                onCloseMobile?.();
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Upload className="w-4 h-4 text-blue-500" />
+                <span>Importar Partitura</span>
+              </div>
+            </button>
+
             {/* Tab: Exportar */}
             <button
               onClick={() => {
@@ -296,6 +316,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="capitalize text-[10px] font-semibold text-slate-800 dark:text-slate-200">
               {theme === 'dark' ? 'Oscuro' : 'Claro'}
             </span>
+          </button>
+
+          {/* Welcome Guided Tutorial */}
+          <button
+            onClick={() => {
+              onOpenTutorial();
+              onCloseMobile?.();
+            }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            title="Ver tutorial interactivo de inicio"
+          >
+            <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+            <span>Tutorial de bienvenida</span>
           </button>
 
           {/* Shortcuts / Help */}

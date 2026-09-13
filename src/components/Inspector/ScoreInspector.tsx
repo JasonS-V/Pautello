@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   MoreHorizontal,
   ArrowUp,
@@ -28,6 +28,8 @@ interface ScoreInspectorProps {
   onUpdateTimeSignature: (timeSig: TimeSignature) => void;
   keySignature: KeySignature;
   onUpdateKeySignature: (keySig: KeySignature) => void;
+  onChangeKeySignatureAndTranspose?: (newKey: KeySignature, transposeNotes: boolean) => void;
+  onTransposeScore?: (semitones: number) => void;
   onAddMeasure: () => void;
   onDeleteMeasure: () => void;
   onDeleteSelected: () => void;
@@ -58,6 +60,8 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   onUpdateTimeSignature,
   keySignature,
   onUpdateKeySignature,
+  onChangeKeySignatureAndTranspose,
+  onTransposeScore,
   onAddMeasure,
   onDeleteMeasure,
   onDeleteSelected,
@@ -76,6 +80,8 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
+  const [autoTransposeNotes, setAutoTransposeNotes] = useState<boolean>(true);
+
   // Find selected item if any
   const primaryStaff = score.staves[0];
   let selectedItem: ScoreItem | null = null;
@@ -444,7 +450,14 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
             <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Tonalidad:</span>
             <select
               value={keySignature}
-              onChange={(e) => onUpdateKeySignature(e.target.value as KeySignature)}
+              onChange={(e) => {
+                const newKey = e.target.value as KeySignature;
+                if (onChangeKeySignatureAndTranspose) {
+                  onChangeKeySignatureAndTranspose(newKey, autoTransposeNotes);
+                } else {
+                  onUpdateKeySignature(newKey);
+                }
+              }}
               className="bg-white dark:bg-[#111319] border border-slate-200 dark:border-[#2c3244] text-slate-800 dark:text-slate-200 text-[11px] font-semibold rounded-lg px-2.5 py-1 outline-none cursor-pointer focus:border-[#f59e0b]"
             >
               <option value="C">Do Mayor / La menor</option>
@@ -460,6 +473,62 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
               <option value="Dm">Re menor (1 ♭)</option>
             </select>
           </div>
+
+          <div className="flex items-center gap-2 pt-0.5">
+            <input
+              type="checkbox"
+              id="auto-trans-check"
+              checked={autoTransposeNotes}
+              onChange={(e) => setAutoTransposeNotes(e.target.checked)}
+              className="w-3.5 h-3.5 accent-[#f59e0b] rounded cursor-pointer"
+            />
+            <label htmlFor="auto-trans-check" className="text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+              Transponer notas al cambiar tonalidad
+            </label>
+          </div>
+
+          {/* Whole Score Transposition */}
+          {onTransposeScore && (
+            <div className="pt-2 border-t border-slate-200/60 dark:border-[#232836]">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-1">
+                Transponer toda la obra:
+              </span>
+              <div className="grid grid-cols-4 gap-1">
+                <button
+                  onClick={() => onTransposeScore(1)}
+                  className="py-1 px-1 bg-amber-100 hover:bg-amber-200 dark:bg-[#202534] dark:hover:bg-[#282f42] text-amber-950 dark:text-amber-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Subir toda la obra 1 semitono"
+                >
+                  <ArrowUp className="w-2.5 h-2.5" />
+                  <span>+1</span>
+                </button>
+                <button
+                  onClick={() => onTransposeScore(-1)}
+                  className="py-1 px-1 bg-purple-100 hover:bg-purple-200 dark:bg-[#202534] dark:hover:bg-[#282f42] text-purple-950 dark:text-purple-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Bajar toda la obra 1 semitono"
+                >
+                  <ArrowDown className="w-2.5 h-2.5" />
+                  <span>-1</span>
+                </button>
+                <button
+                  onClick={() => onTransposeScore(12)}
+                  className="py-1 px-1 bg-slate-200 hover:bg-slate-300 dark:bg-[#202534] dark:hover:bg-[#282f42] text-slate-800 dark:text-slate-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Subir toda la obra 1 octava (+12)"
+                >
+                  <ArrowUp className="w-2.5 h-2.5" />
+                  <span>+8va</span>
+                </button>
+                <button
+                  onClick={() => onTransposeScore(-12)}
+                  className="py-1 px-1 bg-slate-200 hover:bg-slate-300 dark:bg-[#202534] dark:hover:bg-[#282f42] text-slate-800 dark:text-slate-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-0.5 transition-transform active:scale-95"
+                  title="Bajar toda la obra 1 octava (-12)"
+                >
+                  <ArrowDown className="w-2.5 h-2.5" />
+                  <span>-8va</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Add / Delete Measure Buttons */}

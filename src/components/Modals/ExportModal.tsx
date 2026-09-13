@@ -9,6 +9,7 @@ interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onImportScore: (score: Score) => void;
+  onOpenImport?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -16,6 +17,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   onImportScore,
+  onOpenImport,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -215,11 +217,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             className="hidden"
           />
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full py-2.5 px-4 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 text-slate-700 dark:text-slate-300 hover:text-blue-600 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+            onClick={() => {
+              if (onOpenImport) {
+                onClose();
+                onOpenImport();
+              } else {
+                fileInputRef.current?.click();
+              }
+            }}
+            className="w-full py-2.5 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 text-slate-700 dark:text-slate-300 hover:text-blue-600 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
           >
             <Upload className="w-4 h-4" />
-            <span>Abrir archivo (.musicxml, .xml o .json) desde mi computadora</span>
+            <span>Abrir e Importar Partitura (.musicxml, .mid, .json)</span>
           </button>
         </div>
       </div>

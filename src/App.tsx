@@ -14,6 +14,8 @@ import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 import { DonateModal } from './components/Modals/DonateModal';
 import { TemplatesModal } from './components/Modals/TemplatesModal';
 import { MixerModal } from './components/Modals/MixerModal';
+import { ImportModal } from './components/Modals/ImportModal';
+import { OnboardingTour, TUTORIAL_STORAGE_KEY } from './components/Onboarding/OnboardingTour';
 import {
   loadThemePreference,
   saveThemePreference,
@@ -53,6 +55,8 @@ export default function App() {
     updateTempo,
     updateTimeSignature,
     updateKeySignature,
+    transposeScore,
+    changeKeySignatureAndTranspose,
     updateClef,
     loadTemplate,
     clearScore,
@@ -78,23 +82,25 @@ export default function App() {
 
   // Layout & Navigation State
   const [activeTab, setActiveTab] = useState<SidebarTab>('editor');
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
-
-  // Theme & Naming Preferences
   const [theme, setTheme] = useState<'dark' | 'light'>(() => loadThemePreference());
   const [namingConvention, setNamingConvention] = useState<NamingConvention>(() =>
     loadNamingPreference()
   );
   const [showNoteNames, setShowNoteNames] = useState<boolean>(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isPianoCollapsed, setIsPianoCollapsed] = useState<boolean>(false);
 
   // Modals state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+  const [isImportOpen, setIsImportOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
   const [isMixerOpen, setIsMixerOpen] = useState<boolean>(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(() => {
+    return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== 'true';
+  });
 
   // Sync theme with HTML root class
   useEffect(() => {
@@ -214,8 +220,10 @@ export default function App() {
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onOpenMixer={() => setIsMixerOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
+        onOpenImport={() => setIsImportOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenDonate={() => setIsDonateOpen(true)}
+        onOpenTutorial={() => setIsTutorialOpen(true)}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -242,10 +250,11 @@ export default function App() {
           onLoadTemplate={loadTemplate}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onToggleInspector={() => setIsInspectorCollapsed((prev) => !prev)}
+          onOpenImport={() => setIsImportOpen(true)}
         />
 
         {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
-        <div className="px-4 sm:px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+        <div id="stat-cards-container" className="px-4 sm:px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
           {/* Card 1: Amber Pastel Card - Métrica & Tonalidad */}
           <StatCard
             variant="amber"
@@ -297,28 +306,30 @@ export default function App() {
         <div className="flex-1 px-4 sm:px-6 pb-4 flex flex-col min-h-0">
           <div className="flex-1 flex flex-col bg-white dark:bg-[#161922] rounded-2xl border border-slate-200 dark:border-[#232836] shadow-md overflow-hidden min-h-[450px] transition-colors">
             {/* Embedded Toolbar for Note Durations & Accidentals with full reactive selection updates */}
-            <Toolbar
-              activeDuration={activeDuration}
-              onSelectDuration={(dur) => {
-                setActiveDuration(dur);
-                if (selectedItemId) changeSelectedDuration(dur);
-              }}
-              isRestMode={isRestMode}
-              onToggleRestMode={() => setIsRestMode((prev) => !prev)}
-              activeAccidental={activeAccidental}
-              onSelectAccidental={(acc) => {
-                setActiveAccidental(acc);
-                if (selectedItemId) setSelectedAccidental(acc);
-              }}
-              isDotted={isDotted}
-              onToggleDot={() => {
-                setIsDotted((prev) => !prev);
-                if (selectedItemId) toggleSelectedDot();
-              }}
-            />
+            <div id="toolbar-container">
+              <Toolbar
+                activeDuration={activeDuration}
+                onSelectDuration={(dur) => {
+                  setActiveDuration(dur);
+                  if (selectedItemId) changeSelectedDuration(dur);
+                }}
+                isRestMode={isRestMode}
+                onToggleRestMode={() => setIsRestMode((prev) => !prev)}
+                activeAccidental={activeAccidental}
+                onSelectAccidental={(acc) => {
+                  setActiveAccidental(acc);
+                  if (selectedItemId) setSelectedAccidental(acc);
+                }}
+                isDotted={isDotted}
+                onToggleDot={() => {
+                  setIsDotted((prev) => !prev);
+                  if (selectedItemId) toggleSelectedDot();
+                }}
+              />
+            </div>
 
             {/* Interactive Vector Score Canvas */}
-            <div className="flex-1 flex overflow-auto relative">
+            <div id="score-canvas" className="flex-1 flex overflow-auto relative">
               <ScoreView
                 score={score}
                 selectedItemId={selectedItemId}
@@ -362,6 +373,8 @@ export default function App() {
         onUpdateTimeSignature={updateTimeSignature}
         keySignature={score.keySignature}
         onUpdateKeySignature={updateKeySignature}
+        onChangeKeySignatureAndTranspose={changeKeySignatureAndTranspose}
+        onTransposeScore={transposeScore}
         onAddMeasure={addMeasure}
         onDeleteMeasure={() => deleteMeasure(selectedMeasureIdx)}
         onDeleteSelected={deleteSelected}
@@ -382,10 +395,24 @@ export default function App() {
       />
 
       {/* Dialog Modals */}
+      <ImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportScore={(importedScore) => {
+          loadTemplate({
+            id: 'imported',
+            name: importedScore.title,
+            description: 'Partitura importada',
+            score: importedScore,
+          });
+        }}
+      />
+
       <ExportModal
         score={score}
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
+        onOpenImport={() => setIsImportOpen(true)}
         onImportScore={(importedScore) => {
           loadTemplate({
             id: 'imported',
@@ -423,6 +450,13 @@ export default function App() {
       <DonateModal
         isOpen={isDonateOpen}
         onClose={() => setIsDonateOpen(false)}
+      />
+
+      {/* Interactive First-Launch Onboarding Walkthrough */}
+      <OnboardingTour
+        isOpen={isTutorialOpen}
+        onClose={() => setIsTutorialOpen(false)}
+        onComplete={() => setIsTutorialOpen(false)}
       />
     </div>
   );

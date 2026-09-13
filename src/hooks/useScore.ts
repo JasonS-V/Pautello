@@ -4,6 +4,7 @@ import { TEMPLATES, ScoreTemplate } from '../constants/templates';
 import { loadScoreFromStorage, saveScoreToStorage } from '../utils/storage';
 import { audioEngine } from '../audio/synth';
 import { pitchToMidi, getItemBeats } from '../constants/pitches';
+import { transposeScoreNotes, getSemitoneOffsetBetweenKeys } from '../utils/keyDetection';
 
 export function useScore() {
   const [score, setScore] = useState<Score>(() => loadScoreFromStorage());
@@ -428,6 +429,23 @@ export function useScore() {
     setScore(prev => ({ ...prev, keySignature: keySig }));
   }, [score, pushHistory]);
 
+  const transposeScore = useCallback((semitones: number) => {
+    if (semitones === 0) return;
+    pushHistory(score);
+    setScore(prev => transposeScoreNotes(prev, semitones));
+  }, [score, pushHistory]);
+
+  const changeKeySignatureAndTranspose = useCallback((newKey: KeySignature, transposeNotes: boolean) => {
+    if (newKey === score.keySignature) return;
+    pushHistory(score);
+    if (transposeNotes) {
+      const semitones = getSemitoneOffsetBetweenKeys(score.keySignature, newKey);
+      setScore(prev => transposeScoreNotes(prev, semitones, newKey));
+    } else {
+      setScore(prev => ({ ...prev, keySignature: newKey }));
+    }
+  }, [score, pushHistory]);
+
   const updateClef = useCallback((clef: Clef) => {
     pushHistory(score);
     setScore(prev => {
@@ -482,6 +500,8 @@ export function useScore() {
     updateTempo,
     updateTimeSignature,
     updateKeySignature,
+    transposeScore,
+    changeKeySignatureAndTranspose,
     updateClef,
     loadTemplate,
     clearScore,
