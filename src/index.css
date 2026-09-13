@@ -9,6 +9,22 @@
   }
 }
 
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.4);
+}
+
 /* Print Stylesheet for High Definition Vector Sheet Music */
 @media print {
   body {
@@ -17,9 +33,12 @@
   }
   header,
   nav,
+  aside,
   button,
   .no-print,
   #piano-container,
+  #sidebar-container,
+  #inspector-container,
   .measure-hotspot,
   .fixed,
   [role="dialog"] {

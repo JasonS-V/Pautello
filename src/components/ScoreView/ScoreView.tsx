@@ -139,7 +139,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
     <div
       ref={containerRef}
       onClick={() => onSelectItem(selectedMeasureIdx, null)}
-      className="flex-1 overflow-auto bg-[#e5e7eb] dark:bg-[#0b0d12] p-4 sm:p-8 flex justify-center items-start select-none"
+      className="flex-1 overflow-auto bg-slate-100 dark:bg-[#0c0d12] p-3 sm:p-6 flex justify-center items-start select-none"
     >
       {/* Paper Sheet container */}
       <div
@@ -147,7 +147,7 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
           e.stopPropagation();
           onSelectItem(selectedMeasureIdx, null);
         }}
-        className="score-sheet bg-white dark:bg-[#151821] text-slate-900 dark:text-slate-100 shadow-xl rounded-lg p-6 sm:p-10 min-w-[780px] max-w-[960px] border border-slate-200 dark:border-slate-800 transition-colors"
+        className="score-sheet bg-white dark:bg-[#161922] text-slate-900 dark:text-slate-100 shadow-xl rounded-2xl p-6 sm:p-8 min-w-[780px] max-w-[960px] border border-slate-200 dark:border-[#232836] transition-colors"
       >
         {/* Score Header */}
         <div className="text-center mb-8 border-b border-slate-100 dark:border-slate-800/80 pb-6 relative">

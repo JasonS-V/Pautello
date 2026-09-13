@@ -91,8 +91,11 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
   }
 
   return (
-    <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#111319] select-none transition-all shadow-inner">
-      <div className="flex items-center justify-between px-4 py-1 bg-slate-100 dark:bg-[#161a24] border-b border-slate-200 dark:border-slate-800 text-xs">
+    <div
+      id="piano-container"
+      className="border-t border-slate-200 dark:border-[#202433] bg-slate-50 dark:bg-[#111319] select-none transition-all shadow-inner"
+    >
+      <div className="flex items-center justify-between px-4 py-1.5 bg-slate-100 dark:bg-[#161922] border-b border-slate-200 dark:border-[#202433] text-xs">
         <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
           <span>🎹</span>
           <span>Teclado de Solfeo y Entrada Rápida (C3 - B5)</span>
