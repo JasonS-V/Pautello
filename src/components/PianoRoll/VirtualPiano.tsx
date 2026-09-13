@@ -15,6 +15,9 @@ interface VirtualPianoProps {
   onNoteClick: (pitch: Pitch) => void;
   namingConvention: NamingConvention;
   activePlaybackMidi?: number | null;
+  activeMidiPitch?: number | null;
+  isMidiConnected?: boolean;
+  connectedDevices?: string[];
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -23,10 +26,14 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
   onNoteClick,
   namingConvention,
   activePlaybackMidi,
+  activeMidiPitch,
+  isMidiConnected,
+  connectedDevices,
   collapsed,
   onToggleCollapse,
 }) => {
   const [activePressedMidi, setActivePressedMidi] = useState<number | null>(null);
+
 
   // Generate 3 Octaves: C3 (48) to B5 (83)
   const keys: PianoKey[] = [];
@@ -99,9 +106,16 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
         <div className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
           <span>🎹</span>
           <span>Teclado de Solfeo y Entrada Rápida (C3 - B5)</span>
-          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
-            (Haz clic para escuchar e insertar notas directamente en la partitura)
-          </span>
+          {isMidiConnected ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold text-[10px] border border-emerald-300 dark:border-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              MIDI: {connectedDevices?.[0] || 'Conectado'}
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal hidden sm:inline">
+              (Haz clic para escuchar e insertar notas directamente)
+            </span>
+          )}
         </div>
         <button
           onClick={onToggleCollapse}
@@ -115,6 +129,7 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
         <div className="relative inline-flex h-28 bg-black/10 dark:bg-black/30 p-1 rounded-md">
           {keys.filter(k => !k.isBlack).map(whiteKey => {
             const isPlaying = activePlaybackMidi === whiteKey.midi;
+            const isMidiActive = activeMidiPitch === whiteKey.midi;
             const isPressed = activePressedMidi === whiteKey.midi;
             const isMiddleC = whiteKey.step === 'C' && whiteKey.octave === 4;
 
@@ -123,9 +138,10 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
                 key={`white-${whiteKey.midi}`}
                 onClick={() => handleKeyTrigger(whiteKey)}
                 className={`relative w-9 shrink-0 h-full border border-slate-300 dark:border-slate-700 rounded-b-md cursor-pointer flex flex-col justify-end items-center pb-2 transition-all select-none
-                  ${isPlaying ? '!bg-amber-400 dark:!bg-amber-500 !text-slate-950 font-bold shadow-md' : ''}
-                  ${isPressed ? '!bg-blue-300 dark:!bg-blue-600' : ''}
-                  ${!isPlaying && !isPressed ? 'bg-white hover:bg-slate-100 dark:bg-slate-100 dark:hover:bg-slate-200 text-slate-700' : ''}
+                  ${isMidiActive ? '!bg-emerald-400 dark:!bg-emerald-500 !text-slate-950 font-bold shadow-md ring-2 ring-emerald-500' : ''}
+                  ${isPlaying && !isMidiActive ? '!bg-amber-400 dark:!bg-amber-500 !text-slate-950 font-bold shadow-md' : ''}
+                  ${isPressed && !isMidiActive && !isPlaying ? '!bg-blue-300 dark:!bg-blue-600' : ''}
+                  ${!isPlaying && !isPressed && !isMidiActive ? 'bg-white hover:bg-slate-100 dark:bg-slate-100 dark:hover:bg-slate-200 text-slate-700' : ''}
                 `}
               >
                 {isMiddleC && (
@@ -148,6 +164,7 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
               // Center black key between whiteKeysBefore - 1 and whiteKeysBefore
               // Each white key is around 36px in sm
               const isPlaying = activePlaybackMidi === k.midi;
+              const isMidiActive = activeMidiPitch === k.midi;
               const isPressed = activePressedMidi === k.midi;
 
               return (
@@ -162,9 +179,10 @@ export const VirtualPiano: React.FC<VirtualPianoProps> = ({
                     left: `${whiteKeysBefore * 36 - 11}px`,
                   }}
                   className={`pointer-events-auto w-5 h-16 rounded-b border border-black/50 cursor-pointer flex flex-col justify-end items-center pb-1 z-10 transition-all select-none
-                    ${isPlaying ? '!bg-amber-400 dark:!bg-amber-500 !text-slate-950 font-bold shadow-lg' : ''}
-                    ${isPressed ? '!bg-blue-500' : ''}
-                    ${!isPlaying && !isPressed ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 shadow-md' : ''}
+                    ${isMidiActive ? '!bg-emerald-400 dark:!bg-emerald-500 !text-slate-950 font-bold shadow-lg ring-2 ring-emerald-400' : ''}
+                    ${isPlaying && !isMidiActive ? '!bg-amber-400 dark:!bg-amber-500 !text-slate-950 font-bold shadow-lg' : ''}
+                    ${isPressed && !isMidiActive && !isPlaying ? '!bg-blue-500' : ''}
+                    ${!isPlaying && !isPressed && !isMidiActive ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 shadow-md' : ''}
                   `}
                 >
                   <span className="text-[8px] text-slate-300 select-none pointer-events-none">

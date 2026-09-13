@@ -15,7 +15,11 @@ import { DonateModal } from './components/Modals/DonateModal';
 import { TemplatesModal } from './components/Modals/TemplatesModal';
 import { MixerModal } from './components/Modals/MixerModal';
 import { ImportModal } from './components/Modals/ImportModal';
+import { ShareModal } from './components/Modals/ShareModal';
 import { OnboardingTour, TUTORIAL_STORAGE_KEY } from './components/Onboarding/OnboardingTour';
+import { useMidiInput } from './hooks/useMidiInput';
+import { decompressScoreFromHash } from './utils/shareUrl';
+import { audioEngine } from './audio/synth';
 import {
   loadThemePreference,
   saveThemePreference,
@@ -23,7 +27,7 @@ import {
   saveNamingPreference,
 } from './utils/storage';
 import { NamingConvention, Pitch, Step, Accidental, Clef } from './types/music';
-import { pitchToMidi, KEY_SIGNATURE_DATA } from './constants/pitches';
+import { pitchToMidi, midiToPitch, KEY_SIGNATURE_DATA } from './constants/pitches';
 
 export default function App() {
   const {
@@ -47,6 +51,7 @@ export default function App() {
     toggleSelectedDot,
     setSelectedAccidental,
     updateSelectedLyric,
+    updateSelectedChord,
     updateSelectedStep,
     addMeasure,
     deleteMeasure,
@@ -94,6 +99,7 @@ export default function App() {
   // Modals state
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isImportOpen, setIsImportOpen] = useState<boolean>(false);
+  const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
   const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
@@ -101,6 +107,41 @@ export default function App() {
   const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(() => {
     return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== 'true';
   });
+
+  // Web MIDI & External Keyboard state
+  const [activeMidiPitch, setActiveMidiPitch] = useState<number | null>(null);
+
+  const { isConnected: isMidiConnected, connectedDevices } = useMidiInput({
+    onNoteOn: (midi, velocity) => {
+      const pitch = midiToPitch(midi);
+      setActiveMidiPitch(midi);
+      insertNoteAt(selectedMeasureIdx, pitch);
+      audioEngine.playMidi(midi, 0.4, velocity / 127);
+      setTimeout(() => setActiveMidiPitch(null), 250);
+    },
+    onNoteOff: () => {
+      setActiveMidiPitch(null);
+    },
+  });
+
+  // Auto-load shared score from URL hash on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#share=')) {
+      decompressScoreFromHash(window.location.hash)
+        .then((sharedScore) => {
+          if (sharedScore) {
+            loadTemplate({
+              id: 'shared',
+              name: sharedScore.title || 'Partitura Compartida',
+              description: `Por ${sharedScore.composer || 'Anónimo'} (abierta desde enlace)`,
+              score: sharedScore,
+            });
+          }
+        })
+        .catch((err) => console.error('Error al cargar enlace de partitura:', err));
+    }
+  }, [loadTemplate]);
+
 
   // Sync theme with HTML root class
   useEffect(() => {
@@ -221,6 +262,7 @@ export default function App() {
         onOpenMixer={() => setIsMixerOpen(true)}
         onOpenExport={() => setIsExportOpen(true)}
         onOpenImport={() => setIsImportOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenDonate={() => setIsDonateOpen(true)}
         onOpenTutorial={() => setIsTutorialOpen(true)}
@@ -251,6 +293,9 @@ export default function App() {
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onToggleInspector={() => setIsInspectorCollapsed((prev) => !prev)}
           onOpenImport={() => setIsImportOpen(true)}
+          onOpenShare={() => setIsShareOpen(true)}
+          isMidiConnected={isMidiConnected}
+          connectedDevices={connectedDevices}
         />
 
         {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
@@ -355,6 +400,9 @@ export default function App() {
             onNoteClick={(pitch) => insertNoteAt(selectedMeasureIdx, pitch)}
             namingConvention={namingConvention}
             activePlaybackMidi={activePlaybackMidi}
+            activeMidiPitch={activeMidiPitch}
+            isMidiConnected={isMidiConnected}
+            connectedDevices={connectedDevices}
             collapsed={isPianoCollapsed}
             onToggleCollapse={() => setIsPianoCollapsed((prev) => !prev)}
           />
@@ -383,6 +431,7 @@ export default function App() {
         onToggleDot={toggleSelectedDot}
         onSetAccidental={setSelectedAccidental}
         onUpdateLyric={updateSelectedLyric}
+        onUpdateChord={updateSelectedChord}
         onUpdateStep={updateSelectedStep}
         onClearScore={clearScore}
         canUndo={canUndo}
@@ -450,6 +499,12 @@ export default function App() {
       <DonateModal
         isOpen={isDonateOpen}
         onClose={() => setIsDonateOpen(false)}
+      />
+
+      <ShareModal
+        score={score}
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
       />
 
       {/* Interactive First-Launch Onboarding Walkthrough */}

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Score, ScoreItem, Clef, TimeSignature, KeySignature, NamingConvention, Step, NoteDuration, Accidental } from '../../types/music';
 import { formatPitchName, pitchToFrequency, LATIN_STEP_NAMES } from '../../constants/pitches';
+import { getDiatonicChordsForKey } from '../../utils/chordUtils';
 
 interface ScoreInspectorProps {
   score: Score;
@@ -38,6 +39,7 @@ interface ScoreInspectorProps {
   onToggleDot: () => void;
   onSetAccidental: (acc: Accidental) => void;
   onUpdateLyric: (lyric: string) => void;
+  onUpdateChord?: (chord: string | undefined) => void;
   onUpdateStep: (step: Step) => void;
   onClearScore: () => void;
   canUndo: boolean;
@@ -70,6 +72,7 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
   onToggleDot,
   onSetAccidental,
   onUpdateLyric,
+  onUpdateChord,
   onUpdateStep,
   onClearScore,
   canUndo,
@@ -346,6 +349,50 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
               />
             </div>
 
+            {/* Chord Symbol / Lead Sheet */}
+            {onUpdateChord && (
+              <div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium mb-1">
+                  <div className="flex items-center gap-1">
+                    <Music className="w-3 h-3 text-amber-500" />
+                    <span>Cifrado de Acorde:</span>
+                  </div>
+                  {selectedItem.chord && (
+                    <button
+                      onClick={() => onUpdateChord(undefined)}
+                      className="text-red-500 hover:text-red-600 font-bold"
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={selectedItem.chord || ''}
+                  onChange={(e) => onUpdateChord(e.target.value)}
+                  placeholder="Ej: C, G7, Am, C/E..."
+                  className="w-full bg-white dark:bg-[#111319] border border-slate-200 dark:border-[#2a3044] rounded-lg px-2.5 py-1 text-xs font-bold text-amber-700 dark:text-[#fed7aa] outline-none focus:border-[#f59e0b] transition-colors mb-1.5"
+                  title="Escribe el acorde de cifrado para esta nota"
+                />
+                {/* Diatonic Chord Quick Pills */}
+                <div className="flex flex-wrap gap-1">
+                  {getDiatonicChordsForKey(score.keySignature, namingConvention).map((ch) => (
+                    <button
+                      key={ch}
+                      onClick={() => onUpdateChord(ch)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                        selectedItem.chord === ch
+                          ? 'bg-[#fed7aa] text-amber-950 ring-1 ring-amber-400 shadow-xs'
+                          : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2a3044]'
+                      }`}
+                    >
+                      {ch}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Delete button */}
             <button
               onClick={onDeleteSelected}
@@ -385,11 +432,55 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
               </div>
             </div>
 
+            {/* Chord Symbol / Lead Sheet for Rests */}
+            {onUpdateChord && (
+              <div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium mb-1">
+                  <div className="flex items-center gap-1">
+                    <Music className="w-3 h-3 text-amber-500" />
+                    <span>Cifrado de Acorde:</span>
+                  </div>
+                  {selectedItem.chord && (
+                    <button
+                      onClick={() => onUpdateChord(undefined)}
+                      className="text-red-500 hover:text-red-600 font-bold"
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={selectedItem.chord || ''}
+                  onChange={(e) => onUpdateChord(e.target.value)}
+                  placeholder="Ej: C, G7, Am, C/E..."
+                  className="w-full bg-white dark:bg-[#111319] border border-slate-200 dark:border-[#2a3044] rounded-lg px-2.5 py-1 text-xs font-bold text-amber-700 dark:text-[#fed7aa] outline-none focus:border-[#f59e0b] transition-colors mb-1.5"
+                  title="Escribe el acorde de cifrado para este silencio"
+                />
+                {/* Diatonic Chord Quick Pills */}
+                <div className="flex flex-wrap gap-1">
+                  {getDiatonicChordsForKey(score.keySignature, namingConvention).map((ch) => (
+                    <button
+                      key={ch}
+                      onClick={() => onUpdateChord(ch)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                        selectedItem.chord === ch
+                          ? 'bg-[#fed7aa] text-amber-950 ring-1 ring-amber-400 shadow-xs'
+                          : 'bg-white hover:bg-slate-200 dark:bg-[#111319] dark:hover:bg-[#202534] text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-[#2a3044]'
+                      }`}
+                    >
+                      {ch}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button
               onClick={onDeleteSelected}
-              className="w-full py-1.5 px-2 bg-[#fca5a5] hover:bg-[#f87171] text-red-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95"
+              className="w-full py-1.5 px-2 bg-[#fca5a5] hover:bg-[#f87171] text-red-950 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1 transition-transform active:scale-95 shadow-xs"
             >
-              <Trash2 className="w-3 h-3 stroke-[2.5]" />
+              <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Eliminar Silencio</span>
             </button>
           </div>

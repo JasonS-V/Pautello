@@ -1,5 +1,6 @@
 import { Score, Pitch, KeySignature, Step, Accidental } from '../types/music';
 import { pitchToMidi, getItemBeats, KEY_SIGNATURE_DATA } from '../constants/pitches';
+import { transposeChord } from './chordUtils';
 
 // Krumhansl-Kessler key profiles for major and minor keys
 // Reference: Krumhansl, C. L. (1990). Cognitive Foundations of Musical Pitch.
@@ -236,6 +237,9 @@ export function transposeScoreNotes(
       measure.items.forEach(item => {
         if (item.type === 'note' && item.pitch) {
           item.pitch = transposePitch(item.pitch, semitones, preferSharps);
+        }
+        if (item.chord) {
+          item.chord = transposeChord(item.chord, semitones, preferSharps);
         }
       });
     });

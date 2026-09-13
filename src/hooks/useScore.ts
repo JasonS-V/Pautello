@@ -354,6 +354,24 @@ export function useScore() {
     });
   }, [selectedItemId, selectedMeasureIdx]);
 
+  const updateSelectedChord = useCallback((chord: string | undefined) => {
+    if (!selectedItemId) return;
+    setScore(prev => {
+      const newScore = JSON.parse(JSON.stringify(prev)) as Score;
+      const staff = newScore.staves[0];
+      if (!staff) return prev;
+
+      const measure = staff.measures[selectedMeasureIdx];
+      if (!measure) return prev;
+
+      const item = measure.items.find(it => it.id === selectedItemId);
+      if (item) {
+        item.chord = chord?.trim() ? chord.trim() : undefined;
+      }
+      return newScore;
+    });
+  }, [selectedItemId, selectedMeasureIdx]);
+
   const updateSelectedStep = useCallback((step: Step) => {
     if (!selectedItemId) return;
     pushHistory(score);
@@ -492,6 +510,7 @@ export function useScore() {
     toggleSelectedDot,
     setSelectedAccidental,
     updateSelectedLyric,
+    updateSelectedChord,
     updateSelectedStep,
     addMeasure,
     deleteMeasure,

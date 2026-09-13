@@ -11,6 +11,7 @@ import {
   Menu,
   PanelRight,
   Upload,
+  Share2,
 } from 'lucide-react';
 import { Score } from '../../types/music';
 import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
@@ -37,6 +38,9 @@ interface NavbarProps {
   onOpenMobileMenu?: () => void;
   onToggleInspector?: () => void;
   onOpenImport?: () => void;
+  onOpenShare?: () => void;
+  isMidiConnected?: boolean;
+  connectedDevices?: string[];
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -59,8 +63,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenMobileMenu,
   onToggleInspector,
   onOpenImport,
+  onOpenShare,
+  isMidiConnected,
+  connectedDevices,
 }) => {
   const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
+
 
   return (
     <header className="px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 select-none bg-transparent">
@@ -103,6 +111,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-amber-600 dark:text-[#f59e0b] font-semibold">{keyLabel}</span>
             <span>•</span>
             <span>{score.timeSignature.beats}/{score.timeSignature.beatType}</span>
+            {isMidiConnected && (
+              <>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold text-[10px] border border-emerald-300 dark:border-emerald-800">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  🎹 MIDI: {connectedDevices?.[0] || 'Conectado'}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -221,6 +238,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Importar</span>
           </button>
         )}
+
+        {/* Share Score Button */}
+        {onOpenShare && (
+          <button
+            onClick={onOpenShare}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-[#fed7aa]/35 hover:bg-[#fed7aa]/60 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 border border-amber-300/60 dark:border-amber-500/30 text-amber-950 dark:text-[#fed7aa] transition-all shadow-xs active:scale-95"
+            title="Compartir partitura mediante enlace web directo (sin servidor ni registro)"
+          >
+            <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-[#f59e0b]" />
+            <span>Compartir</span>
+          </button>
+        )}
+
 
         {/* Templates Quick Menu Dropdown */}
         <div className="relative group">

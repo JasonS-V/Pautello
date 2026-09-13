@@ -23,6 +23,7 @@ export interface ScoreItem {
   isTied?: boolean;
   articulation?: Articulation;
   lyric?: string;
+  chord?: string; // Lead sheet chord symbol e.g. "C", "G7", "Am", "F#m7", "C/E"
 }
 
 export interface Measure {

@@ -14,6 +14,7 @@ import {
   Sliders,
   Upload,
   GraduationCap,
+  Share2,
 } from 'lucide-react';
 import { NamingConvention } from '../../types/music';
 
@@ -34,6 +35,7 @@ interface SidebarProps {
   onOpenMixer: () => void;
   onOpenExport: () => void;
   onOpenImport: () => void;
+  onOpenShare?: () => void;
   onOpenShortcuts: () => void;
   onOpenDonate: () => void;
   onOpenTutorial: () => void;
@@ -56,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenMixer,
   onOpenExport,
   onOpenImport,
+  onOpenShare,
   onOpenShortcuts,
   onOpenDonate,
   onOpenTutorial,
@@ -231,6 +234,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>Exportar Partitura</span>
               </div>
             </button>
+
+            {/* Tab: Compartir Enlace */}
+            {onOpenShare && (
+              <button
+                onClick={() => {
+                  onOpenShare();
+                  onCloseMobile?.();
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-amber-700 dark:text-[#fed7aa] bg-amber-500/10 dark:bg-amber-400/10 hover:bg-amber-500/20 dark:hover:bg-amber-400/20 transition-all border border-amber-300/40 dark:border-amber-500/20"
+              >
+                <div className="flex items-center gap-3">
+                  <Share2 className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold">Compartir Enlace</span>
+                </div>
+                <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-[#fed7aa] px-1.5 py-0.5 rounded font-bold">
+                  URL
+                </span>
+              </button>
+            )}
           </nav>
         </div>
 

@@ -1,8 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { pitchToMidi, midiToFrequency, pitchToFrequency, getItemBeats, formatPitchName } from './pitches';
+import { pitchToMidi, midiToPitch, midiToFrequency, pitchToFrequency, getItemBeats, formatPitchName } from './pitches';
 
 describe('Pitches and Musical Math', () => {
+  it('correctly converts MIDI note number back to Pitch with midiToPitch', () => {
+    expect(midiToPitch(60)).toEqual({ step: 'C', octave: 4, accidental: null });
+    expect(midiToPitch(61)).toEqual({ step: 'C', octave: 4, accidental: '#' });
+    expect(midiToPitch(69)).toEqual({ step: 'A', octave: 4, accidental: null });
+    expect(midiToPitch(48)).toEqual({ step: 'C', octave: 3, accidental: null });
+    expect(midiToPitch(71)).toEqual({ step: 'B', octave: 4, accidental: null });
+  });
+
   it('correctly maps C4 (middle C) to MIDI 60 and ~261.63 Hz', () => {
+
     const midi = pitchToMidi({ step: 'C', octave: 4, accidental: null });
     expect(midi).toBe(60);
     const freq = midiToFrequency(midi);

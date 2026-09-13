@@ -1,4 +1,5 @@
-import { Step, Pitch, NoteDuration, KeySignature, NamingConvention } from '../types/music';
+import { Step, Pitch, Accidental, NoteDuration, KeySignature, NamingConvention } from '../types/music';
+
 
 export const STEP_INDEX: Record<Step, number> = {
   C: 0,
@@ -140,3 +141,30 @@ export const KEY_SIGNATURE_DATA: Record<KeySignature, { accidentals: number; typ
 // Order of sharps and flats in key signatures
 export const ORDER_OF_SHARPS: Step[] = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
 export const ORDER_OF_FLATS: Step[] = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
+
+const MIDI_NOTE_TABLE: { step: Step; accidental: Accidental }[] = [
+  { step: 'C', accidental: null },
+  { step: 'C', accidental: '#' },
+  { step: 'D', accidental: null },
+  { step: 'D', accidental: '#' },
+  { step: 'E', accidental: null },
+  { step: 'F', accidental: null },
+  { step: 'F', accidental: '#' },
+  { step: 'G', accidental: null },
+  { step: 'G', accidental: '#' },
+  { step: 'A', accidental: null },
+  { step: 'A', accidental: '#' },
+  { step: 'B', accidental: null },
+];
+
+/**
+ * Converts a MIDI note number (0-127) to a musical Pitch object
+ * e.g., 60 -> C4, 61 -> C#4, 69 -> A4
+ */
+export function midiToPitch(midi: number): Pitch {
+  const octave = Math.floor(midi / 12) - 1;
+  const noteIndex = ((midi % 12) + 12) % 12;
+  const { step, accidental } = MIDI_NOTE_TABLE[noteIndex];
+  return { step, octave, accidental };
+}
+

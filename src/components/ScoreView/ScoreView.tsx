@@ -416,6 +416,18 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                   <path d={SVG_PATHS.eighthRest} transform="translate(1, 7)" />
                                 </g>
                               )}
+
+                              {/* Chord symbol above staff */}
+                              {item.chord && (
+                                <text
+                                  x="0"
+                                  y={staffTopOffset - 18}
+                                  textAnchor="middle"
+                                  className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
+                                >
+                                  {item.chord}
+                                </text>
+                              )}
                             </g>
                           );
                         }
@@ -640,6 +652,18 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                 className="text-[11px] font-serif italic fill-slate-800 dark:fill-slate-200 select-none"
                               >
                                 {item.lyric}
+                              </text>
+                            )}
+
+                            {/* Chord symbol above staff */}
+                            {item.chord && (
+                              <text
+                                x="0"
+                                y={staffTopOffset - 18}
+                                textAnchor="middle"
+                                className="text-xs font-sans font-black fill-amber-600 dark:fill-[#fed7aa] select-none tracking-tight"
+                              >
+                                {item.chord}
                               </text>
                             )}
                           </g>
