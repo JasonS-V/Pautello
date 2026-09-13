@@ -35,13 +35,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [keyConfidence, setKeyConfidence] = useState<number>(100);
   const [transposeNotes, setTransposeNotes] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isPdfRejected, setIsPdfRejected] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
   const handleProcessFile = async (file: File) => {
     setErrorMessage(null);
+    setIsPdfRejected(false);
     try {
       const extension = file.name.split('.').pop()?.toLowerCase();
+
+      if (extension === 'pdf') {
+        setIsPdfRejected(true);
+        setParsedScore(null);
+        return;
+      }
 
       let score: Score;
 
@@ -105,6 +113,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const handleReset = () => {
     setParsedScore(null);
     setErrorMessage(null);
+    setIsPdfRejected(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -154,7 +163,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
-          accept=".musicxml,.xml,.mid,.midi,.json"
+          accept=".musicxml,.xml,.mid,.midi,.json,.pdf"
           className="hidden"
         />
 
@@ -185,6 +194,30 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 Formatos compatibles: .musicxml, .xml, .mid, .midi, .json
               </p>
             </div>
+
+            {/* Dedicated PDF Educational Guidance Banner */}
+            {isPdfRejected && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex flex-col gap-2.5 text-xs text-amber-900 dark:text-amber-200 animate-in fade-in">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-800 dark:text-amber-400">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>¿Por qué no se puede importar un PDF directamente?</span>
+                </div>
+                <p className="leading-relaxed text-slate-600 dark:text-slate-300 text-[11px]">
+                  Un archivo <strong>PDF</strong> es un documento visual de dibujo o escaneo gráfico; no contiene la información musical codificada (notas, compases, tiempos ni claves).
+                </p>
+                <div className="bg-white/80 dark:bg-[#161a24] p-3 rounded-xl border border-amber-200/70 dark:border-amber-800/40 text-[11px] space-y-1.5">
+                  <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Cómo convertirlo gratis para usarlo aquí:</span>
+                  </div>
+                  <div className="text-slate-600 dark:text-slate-300 space-y-1">
+                    <p>• <strong>Opción 1:</strong> Abre o escanea el PDF en <strong>MuseScore</strong> (software gratuito) y expórtalo como <strong>MusicXML (.musicxml)</strong>.</p>
+                    <p>• <strong>Opción 2:</strong> Usa herramientas online gratuitas de conversión OMR como <strong>Soundslice</strong> o <strong>Audiveris</strong>.</p>
+                    <p>• <strong>Opción 3:</strong> Busca la versión <strong>.musicxml</strong> o <strong>.mid</strong> en <strong>IMSLP</strong> o <strong>MuseScore.com</strong> y arrástrala directamente aquí.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Error banner */}
             {errorMessage && (
