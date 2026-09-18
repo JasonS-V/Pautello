@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ☕ Donaciones y Apoyo al Proyecto
+    url: https://ko-fi.com/aizendev
+    about: Apoya el desarrollo continuo de Pautello para mantenerlo libre y sin muros de pago.
+  - name: 💬 Preguntas y Discusiones
+    url: https://github.com/JasonS-V/Pautello/discussions
+    about: Haz preguntas, comparte tus partituras o debate sobre notación musical con la comunidad.

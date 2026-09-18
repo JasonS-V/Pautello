@@ -26,7 +26,12 @@ import {
 } from '../../constants/pitches';
 import { SVG_PATHS, TIME_SIG_GLYPHS } from '../../engraver/glyphPaths';
 import { calculateItemPositions, detectBeamGroups, BeamedNoteInfo } from '../../engraver/beaming';
-import { getFlagCount, getNoteFlagPath, getRestGlyph, getAccidentalLayout } from '../../engraver/notation';
+import {
+  getFlagCount,
+  getNoteFlagPath,
+  getRestGlyph,
+  getAccidentalLayout,
+} from '../../engraver/notation';
 import { PlaybackState } from '../../audio/player';
 import { audioEngine } from '../../audio/synth';
 import { pitchToGuitarTab } from '../../utils/guitarTab';
@@ -151,9 +156,7 @@ function renderTimeSignatureGlyphs(
     const glyph = TIME_SIG_GLYPHS[isCut ? 'cutC' : 'C'];
     if (glyph) {
       const w = glyph.width * FONT_SCALE;
-      const y = isCut
-        ? staffTop + 20 - (glyph.height * FONT_SCALE) / 2
-        : staffTop + 10;
+      const y = isCut ? staffTop + 20 - (glyph.height * FONT_SCALE) / 2 : staffTop + 10;
       return (
         <g
           key={keyPrefix}
@@ -201,10 +204,7 @@ function renderTimeSignatureGlyphs(
     const startX = centerX - totalWidth / 2;
 
     return (
-      <g
-        key={`${keyPrefix}-${subKey}`}
-        transform={`translate(${startX}, ${groupY})`}
-      >
+      <g key={`${keyPrefix}-${subKey}`} transform={`translate(${startX}, ${groupY})`}>
         {items.map((item, idx) => (
           <g
             key={`${keyPrefix}-${subKey}-${idx}`}
@@ -1885,7 +1885,10 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
             const systemBottomY = getStaffTopOffset(stavesCount - 1) + staffHeight;
 
             return (
-              <div key={`system-${systemIdx}`} className="system-container relative mb-10 print:mb-4 w-full">
+              <div
+                key={`system-${systemIdx}`}
+                className="system-container relative mb-10 print:mb-4 w-full"
+              >
                 <svg
                   width={systemWidth}
                   height={systemHeight}
@@ -2611,26 +2614,27 @@ export const ScoreView: React.FC<ScoreViewProps> = ({
                                 ))}
 
                                 {/* Ghost Accidental */}
-                                {activeAccidental && (() => {
-                                  const ghostLayout = getAccidentalLayout(
-                                    activeAccidental,
-                                    -8.5,
-                                    noteY
-                                  );
-                                  return (
-                                    <svg
-                                      x={ghostLayout.x}
-                                      y={ghostLayout.y}
-                                      width={ghostLayout.width}
-                                      height={ghostLayout.height}
-                                      viewBox={ghostLayout.glyph.viewBox}
-                                      className="pointer-events-none select-none fill-current"
-                                      aria-hidden="true"
-                                    >
-                                      <path d={ghostLayout.glyph.d} fill="currentColor" />
-                                    </svg>
-                                  );
-                                })()}
+                                {activeAccidental &&
+                                  (() => {
+                                    const ghostLayout = getAccidentalLayout(
+                                      activeAccidental,
+                                      -8.5,
+                                      noteY
+                                    );
+                                    return (
+                                      <svg
+                                        x={ghostLayout.x}
+                                        y={ghostLayout.y}
+                                        width={ghostLayout.width}
+                                        height={ghostLayout.height}
+                                        viewBox={ghostLayout.glyph.viewBox}
+                                        className="pointer-events-none select-none fill-current"
+                                        aria-hidden="true"
+                                      >
+                                        <path d={ghostLayout.glyph.d} fill="currentColor" />
+                                      </svg>
+                                    );
+                                  })()}
 
                                 {/* Ghost notehead */}
                                 <ellipse

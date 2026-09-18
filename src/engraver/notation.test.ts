@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { FLAG_STEP, getFlagCount, getNoteFlagPath, getRestGlyph, getAccidentalLayout } from './notation';
+import {
+  FLAG_STEP,
+  getFlagCount,
+  getNoteFlagPath,
+  getRestGlyph,
+  getAccidentalLayout,
+} from './notation';
 import { SVG_PATHS, ACCIDENTAL_GLYPHS } from './glyphPaths';
 import { NoteDuration } from '../types/music';
 

@@ -1,0 +1,67 @@
+name: '🐛 Reporte de Error'
+description: 'Reporta un problema o comportamiento inesperado en Pautello'
+title: '[BUG]: '
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por tomarte el tiempo de reportar este problema y ayudarnos a mejorar Pautello.
+  - type: textarea
+    id: description
+    attributes:
+      label: Descripción del problema
+      description: Explica de manera clara y concisa cuál es el fallo.
+      placeholder: Al intentar añadir una nota con puntillo en el compás 4...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+      description: ¿Cómo podemos reproducir este comportamiento paso a paso?
+      placeholder: |
+        1. Abrir la aplicación
+        2. Seleccionar clave de Fa
+        3. Insertar nota 'La' en el segundo compás
+        4. Presionar barra espaciadora para reproducir
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamiento esperado
+      description: ¿Qué esperabas que ocurriera?
+      placeholder: Esperaba que la nota sonara correctamente con el sintetizador y avanzara el cursor.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Entorno de ejecución
+      description: ¿En qué plataforma ocurrió el problema?
+      options:
+        - Aplicación de escritorio (Windows .exe)
+        - Navegador Web (Chrome / Chromium)
+        - Navegador Web (Firefox)
+        - Navegador Web (Edge)
+        - Navegador Web (Safari)
+        - Otro
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Pautello / Sistema Operativo
+      description: Versión de Pautello (ej. v1.0.0) y versión de tu SO (ej. Windows 11, macOS Sequoia, Ubuntu 24.04).
+      placeholder: Pautello v1.0.0 / Windows 11 64-bit
+    validations:
+      required: false
+  - type: textarea
+    id: logs_or_screenshots
+    attributes:
+      label: Capturas de pantalla o mensajes de la consola
+      description: Puedes arrastrar y soltar imágenes aquí o pegar mensajes de error de la consola de desarrollador (F12).
+      placeholder: Pega aquí capturas o errores si están disponibles.
+    validations:
+      required: false

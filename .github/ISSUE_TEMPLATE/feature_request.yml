@@ -1,0 +1,44 @@
+name: '💡 Sugerencia de Funcionalidad'
+description: 'Propón una nueva característica, mejora de notación o ajuste para Pautello'
+title: '[FEAT]: '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ¡Nos encanta recibir ideas para seguir construyendo el editor de partituras más accesible y artesanal!
+  - type: textarea
+    id: problem
+    attributes:
+      label: ¿Qué problema o necesidad resuelve esta funcionalidad?
+      description: Explica el caso de uso musical o práctico.
+      placeholder: Actualmente no es posible... lo que dificulta a los profesores de música...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solución propuesta
+      description: Describe cómo te imaginas que funcionaría esta característica en la interfaz.
+      placeholder: Me gustaría un botón o atajo de teclado en la barra lateral que permita...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: ¿Has considerado otras formas de lograr este objetivo?
+      placeholder: Se intentó usar la exportación MIDI manual, pero...
+    validations:
+      required: false
+  - type: checkboxes
+    id: context
+    attributes:
+      label: Área de impacto
+      options:
+        - label: Notación musical / Grabado (engraver)
+        - label: Motor de audio / Síntesis sonora
+        - label: Importación / Exportación (PDF, MusicXML, MIDI, WAV)
+        - label: Afinador por micrófono / Modo Práctica
+        - label: Interfaz de usuario (UI / Accesibilidad)
+        - label: Aplicación de escritorio (Electron)
