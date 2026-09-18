@@ -1,12 +1,12 @@
 import React from 'react';
 import {
   FileMusic,
+  Github,
   GraduationCap,
   Heart,
   HelpCircle,
   Keyboard,
   Settings,
-  Share2,
   Sparkles,
   Sun,
   Moon,
@@ -26,7 +26,6 @@ interface SidebarProps {
   isPianoCollapsed: boolean;
   onTogglePiano: () => void;
   onOpenTemplates: () => void;
-  onOpenShare: () => void;
   onOpenDonate: () => void;
   onOpenTutorial: () => void;
   onOpenShortcuts: () => void;
@@ -46,7 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isPianoCollapsed,
   onTogglePiano,
   onOpenTemplates,
-  onOpenShare,
   onOpenDonate,
   onOpenTutorial,
   onOpenShortcuts,
@@ -75,28 +73,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div>
           <div className="flex items-center justify-between mb-7 px-1">
             <div className="flex items-center gap-3">
-              {/* Stylized colorful rainbow wave logo from reference */}
+              {/* Brand icon */}
               <div className="relative w-8 h-8 flex items-center justify-center shrink-0">
-                <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
-                  <path
-                    d="M6 24 C6 14, 14 6, 24 6"
-                    className="stroke-pastel-amber"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M11 26 C11 18, 17 11, 26 11"
-                    className="stroke-pastel-purple"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M16 28 C16 22, 20 16, 28 16"
-                    className="stroke-pastel-lime"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <img
+                  src="./icon.svg"
+                  alt="Pautello Logo"
+                  className="w-8 h-8 rounded-[3.5px] shrink-0 select-none shadow-sm"
+                  width={32}
+                  height={32}
+                />
               </div>
               <div>
                 <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white block leading-none">
@@ -135,22 +120,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </button>
 
-            {/* Compartir Enlace */}
-            <button
-              onClick={() => {
-                onOpenShare();
-                onCloseMobile?.();
-              }}
+            {/* Repositorio GitHub */}
+            <a
+              href="https://github.com/JasonS-V/Pautello"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onCloseMobile?.()}
               className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-amber-700 dark:text-pastel-amber bg-amber-500/10 dark:bg-amber-400/10 hover:bg-amber-500/20 dark:hover:bg-amber-400/20 transition-all border border-amber-300/40 dark:border-amber-500/20"
+              title="Repositorio oficial en GitHub: https://github.com/JasonS-V/Pautello"
             >
               <div className="flex items-center gap-3">
-                <Share2 className="w-4 h-4 text-amber-500" />
-                <span className="font-semibold">Compartir Enlace</span>
+                <Github className="w-4 h-4 text-amber-500" />
+                <span className="font-semibold">GitHub Repo</span>
               </div>
-              <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-pastel-amber px-1.5 py-0.5 rounded font-bold">
-                URL
+              <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-pastel-amber px-1.5 py-0.5 rounded font-bold tracking-wider">
+                REPO
               </span>
-            </button>
+            </a>
 
             {/* Conmutador: piano virtual de solfeo */}
             <button

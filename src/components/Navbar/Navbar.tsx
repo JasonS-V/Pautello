@@ -16,6 +16,7 @@ import {
   Plus,
   Cable,
   Flame,
+  Github,
 } from '../ui/icons';
 import { Score } from '../../types/music';
 import { Dropdown, DropdownItem } from '../ui/Dropdown';
@@ -145,6 +146,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             items={toolsItems}
             sectionLabel="Práctica y audio"
           />
+          <a
+            href="https://github.com/JasonS-V/Pautello"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-xl text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-pastel-amber hover:bg-slate-100 dark:hover:bg-studio-hover transition-all duration-150 active:scale-95 flex items-center justify-center shrink-0"
+            title="Repositorio en GitHub: https://github.com/JasonS-V/Pautello"
+            aria-label="Repositorio en GitHub"
+          >
+            <Github className="w-4 h-4 text-amber-500" />
+          </a>
         </div>
       </div>
 

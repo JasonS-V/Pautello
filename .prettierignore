@@ -16,3 +16,6 @@ pnpm-lock.yaml
 
 # Artefactos generados por TypeScript
 *.tsbuildinfo
+
+# Scripts de automatización de Adobe Illustrator (ExtendScript)
+scripts/

@@ -1,22 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pautello">
-  <!--
-    Version maskable: el fondo ocupa todo el lienzo (para que Android pueda
-    recortarlo con cualquier forma) y el motivo se reduce para quedarse dentro
-    de la zona segura del 80% central.
-  -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Capa_2" data-name="Capa 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 185.26 185.26">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3b82f6" />
-      <stop offset="50%" stop-color="#8b5cf6" />
-      <stop offset="100%" stop-color="#ec4899" />
-    </linearGradient>
+    <style>
+      .cls-1 {
+        fill: #f59e0b;
+      }
+
+      .cls-2 {
+        fill: #121318;
+      }
+    </style>
   </defs>
-  <rect width="512" height="512" fill="url(#grad)" />
-  <g fill="#ffffff" transform="translate(124, 134) scale(4)">
-    <circle cx="16" cy="50" r="9" />
-    <circle cx="48" cy="42" r="9" />
-    <rect x="23" y="10" width="4" height="40" />
-    <rect x="55" y="2" width="4" height="40" />
-    <polygon points="23,10 59,2 59,10 23,18" />
+  <g id="Capa_1-2" data-name="Capa 1">
+    <g>
+      <rect class="cls-2" width="185.26" height="185.26" rx="19.2" ry="19.2"/>
+      <path class="cls-1" d="M125.3,58.82c-8.87-7.29-20.5-7.74-31.62-8.57l-.02,55.73-.17,25.94c-.04,5.47-2.91,10.63-6.34,14.64-8.92,10.41-26.14,16.11-38.74,11.04-9.23-3.71-12.76-13.89-8.15-22.75,1.93-3.71,4.48-6.98,7.78-9.74,8.99-7.51,22.92-11.94,34.72-7.9l.02-91.33c19.08-.62,38.52,2.2,52.98,14.62,3.99,3.69,7.16,7.73,9.17,12.76,4.56,11.44,1.51,23.89-7.82,31.85-8.72,7.44-19.83,9.94-31.6,10.94-.41-.86-.53-2.62-.31-3.73,9.93-2.72,19.91-8.76,23.48-18.41,2.03-5.5.83-11.22-3.38-15.08Z"/>
+    </g>
   </g>
 </svg>

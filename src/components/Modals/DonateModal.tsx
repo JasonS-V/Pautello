@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Heart, Coffee, Share2, Check, Sparkles } from '../ui/icons';
+import { Heart, Coffee, Check, Sparkles, Github, Copy } from '../ui/icons';
 import { ModalBase } from '../ui/ModalBase';
 import { ModalHeader, ModalFooter } from '../ui/ModalChrome';
 
@@ -15,8 +15,7 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
 
   const handleShare = () => {
     navigator.clipboard.writeText(
-      '¡Te comparto este editor de partituras gratuito y moderno para estudiantes de música y compositores! Pruébalo aquí: ' +
-        window.location.href
+      '¡Te comparto Pautello, un editor de partituras profesional, moderno y libre! Código y descargas en GitHub: https://github.com/JasonS-V/Pautello'
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
@@ -59,17 +58,29 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
 
           {/* Share action */}
           <div className="space-y-2">
+            {/* Share repo action */}
             <button
               onClick={handleShare}
               className="w-full py-2.5 px-4 rounded-lg bg-studio-accent hover:bg-amber-600 dark:hover:bg-amber-400 active:scale-[0.98] text-slate-950 text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer"
             >
-              {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               <span>
                 {copied
-                  ? '¡Enlace copiado al portapapeles!'
-                  : 'Compartir con amigos y conservatorios'}
+                  ? '¡Enlace de GitHub copiado al portapapeles!'
+                  : 'Compartir repositorio con amigos y músicos'}
               </span>
             </button>
+
+            {/* Direct GitHub repo link */}
+            <a
+              href="https://github.com/JasonS-V/Pautello"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-4 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 active:scale-[0.98] text-amber-900 dark:text-pastel-amber text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+            >
+              <Github className="w-4 h-4 text-amber-500" />
+              <span>Ver repositorio en GitHub (Código y Releases)</span>
+            </a>
 
             {/* Donation link button */}
             <a

@@ -10,7 +10,6 @@ import {
   BookOpen,
   Upload,
   Download,
-  Share2,
   Mic,
   Headphones,
   Target,
@@ -55,10 +54,6 @@ const ShortcutsModal = lazy(() =>
 
 const DonateModal = lazy(() =>
   import('./components/Modals/DonateModal').then((module) => ({ default: module.DonateModal }))
-);
-
-const ShareModal = lazy(() =>
-  import('./components/Modals/ShareModal').then((module) => ({ default: module.ShareModal }))
 );
 
 const TunerModal = lazy(() =>
@@ -114,15 +109,7 @@ import { audioEngine } from './audio/synth';
 // Identificadores de los modales de la aplicación. El estado `activeModal`
 // garantiza que solo haya uno abierto a la vez (Fase 6 del plan de UI).
 type AppModal =
-  | 'export'
-  | 'import'
-  | 'share'
-  | 'shortcuts'
-  | 'donate'
-  | 'templates'
-  | 'mixer'
-  | 'tuner'
-  | 'playalong';
+  'export' | 'import' | 'shortcuts' | 'donate' | 'templates' | 'mixer' | 'tuner' | 'playalong';
 
 export default function App() {
   const {
@@ -647,13 +634,6 @@ export default function App() {
         icon: <Download className="w-4 h-4 text-emerald-500" />,
         onSelect: () => openModal('export'),
       },
-      {
-        id: 'share',
-        label: 'Compartir Enlace',
-        description: 'Generar URL para compartir',
-        icon: <Share2 className="w-4 h-4 text-blue-500" />,
-        onSelect: () => openModal('share'),
-      },
     ],
     [clearScore, openModal]
   );
@@ -740,7 +720,6 @@ export default function App() {
         isPianoCollapsed={isPianoCollapsed}
         onTogglePiano={() => setIsPianoCollapsed((prev) => !prev)}
         onOpenTemplates={() => openModal('templates')}
-        onOpenShare={() => openModal('share')}
         onOpenDonate={() => openModal('donate')}
         onOpenTutorial={() => setIsTutorialOpen(true)}
         onOpenShortcuts={() => openModal('shortcuts')}
@@ -1084,8 +1063,6 @@ export default function App() {
         )}
 
         {activeModal === 'donate' && <DonateModal isOpen onClose={closeModal} />}
-
-        {activeModal === 'share' && <ShareModal score={score} isOpen onClose={closeModal} />}
 
         {/* Real-time Chromatic Tuner Modal */}
         {activeModal === 'tuner' && (

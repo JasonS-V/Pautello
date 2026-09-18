@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎼 Pautello
+# <img src="public/icon.svg" alt="Pautello" width="36" height="36" align="middle" style="vertical-align: middle;" /> Pautello
 
 ### Editor y Creador Profesional de Partituras Libres
 
@@ -16,17 +16,17 @@
 
 <br/>
 
-[📥 **Descargar para Windows (.exe)**](https://github.com/JasonS-V/Pautello/releases/latest) •
-[📖 **Documentación**](#-características-principales) •
-[⌨️ **Atajos de Teclado**](#️-atajos-de-teclado) •
-[🚀 **Instalación Local**](#-instalación-y-ejecución-local) •
-[🤝 **Cómo Contribuir**](CONTRIBUTING.md)
+[**Descargar para Windows (.exe)**](https://github.com/JasonS-V/Pautello/releases/latest) •
+[**Documentación**](#características-principales) •
+[**Atajos de Teclado**](#atajos-de-teclado) •
+[**Instalación Local**](#instalación-y-ejecución-local) •
+[**Cómo Contribuir**](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-## 🌟 Visión del Proyecto
+## Visión del Proyecto
 
 **Pautello** nace como una herramienta diseñada para estudiantes de música, profesores, directores de coro y compositores que buscan plasmar ideas musicales con agilidad, precisión y belleza tipográfica sin depender de software pesado ni modelos de suscripción restrictivos.
 
@@ -38,7 +38,7 @@ Construida bajo una estricta filosofía de **artesanía visual**, cada elemento 
 
 ---
 
-## ✨ Características Principales
+## Características Principales
 
 ### 1. Edición y Grabado Musical Completo
 
@@ -77,11 +77,11 @@ Construida bajo una estricta filosofía de **artesanía visual**, cada elemento 
 - **Audio WAV:** Exportación estéreo sin compresión del audio generado por el sintetizador.
 - **MIDI (`.mid`):** Archivo binario SMF Formato 0 multicanal compatible con DAWs (Ableton Live, FL Studio, Logic Pro, Reaper).
 - **Imágenes SVG y PNG:** Para inserción de compases y fragmentos en apuntes y documentos didácticos.
-- **Copia de Seguridad JSON y Enlace Compartible:** Guarda copias de seguridad locales o comparte partituras completas mediante URLs comprimidas.
+- **Copia de Seguridad JSON:** Guarda y restaura respaldos locales completos de partituras en formato JSON estructurado.
 
 ---
 
-## 💻 Descargas y Versiones de Escritorio
+## Descargas y Versiones de Escritorio
 
 Puedes descargar la última versión compilada para tu sistema operativo desde la sección de [Releases de GitHub](https://github.com/JasonS-V/Pautello/releases/latest):
 
@@ -92,7 +92,7 @@ Puedes descargar la última versión compilada para tu sistema operativo desde l
 
 ---
 
-## ⌨️ Atajos de Teclado
+## Atajos de Teclado
 
 Pautello está optimizado para editar a la velocidad del pensamiento musical sin necesidad de tocar el ratón:
 
@@ -114,7 +114,7 @@ Pautello está optimizado para editar a la velocidad del pensamiento musical sin
 
 ---
 
-## 🚀 Instalación y Ejecución Local
+## Instalación y Ejecución Local
 
 ### Requisitos
 
@@ -151,7 +151,7 @@ Pautello está optimizado para editar a la velocidad del pensamiento musical sin
 
 ---
 
-## 🧪 Pruebas y Calidad de Código
+## Pruebas y Calidad de Código
 
 El repositorio cuenta con una batería completa de más de 300 pruebas automatizadas y cobertura estricta:
 
@@ -174,7 +174,7 @@ pnpm format:check
 
 ---
 
-## 📦 Empaquetado y Publicación de Releases
+## Empaquetado y Publicación de Releases
 
 ### Compilación local del instalador de escritorio
 
@@ -201,7 +201,7 @@ El repositorio cuenta con un flujo automatizado en GitHub Actions (`.github/work
 
 ---
 
-## 📴 Modo sin Conexión (PWA Offline)
+## Modo sin Conexión (PWA Offline)
 
 Pautello incluye un Service Worker y un manifiesto web (`manifest.webmanifest`) configurados para precargar la aplicación completa y los fragmentos descargados bajo demanda:
 
@@ -214,25 +214,25 @@ Carga la aplicación en tu navegador y activa el **modo avión**: la aplicación
 
 ---
 
-## 🤝 Cómo Contribuir
+## Cómo Contribuir
 
-¡Nos encanta recibir contribuciones de la comunidad! Consulta nuestra [Guía de Contribución](CONTRIBUTING.md) para conocer las pautas de código, convenciones de ramas y cómo abrir un Pull Request.
+Nos encanta recibir contribuciones de la comunidad. Consulta nuestra [Guía de Contribución](CONTRIBUTING.md) para conocer las pautas de código, convenciones de ramas y cómo abrir un Pull Request.
 
 Por favor respeta las normas de convivencia detalladas en nuestro [Código de Conducta](CODE_OF_CONDUCT.md).
 
 ---
 
-## ☕ Apoyo Comunitario y Donaciones
+## Apoyo Comunitario y Donaciones
 
 Pautello es y seguirá siendo siempre un proyecto libre y accesible para todos los amantes de la música. Si el proyecto te resulta útil en tus clases, ensayos o composiciones, puedes apoyar su mantenimiento y desarrollo continuo:
 
-- ☕ Apóyanos con un café en [Ko-fi @aizendev](https://ko-fi.com/aizendev)
-- ⭐ Dale una estrella al repositorio en GitHub si te gusta el proyecto.
-- 📢 Comparte Pautello con compañeros músicos, profesores y conservatorios.
+- Apóyanos con un café en [Ko-fi @aizendev](https://ko-fi.com/aizendev)
+- Dale una estrella al repositorio en GitHub si te gusta el proyecto.
+- Comparte Pautello con compañeros músicos, profesores y conservatorios.
 
 ---
 
-## 📄 Licencia
+## Licencia
 
 Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para más detalles.
 

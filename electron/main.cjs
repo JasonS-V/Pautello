@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -50,6 +50,13 @@ function createApplicationMenu() {
       label: 'Ayuda',
       submenu: [
         {
+          label: 'Repositorio en GitHub',
+          click: () => {
+            shell.openExternal('https://github.com/JasonS-V/Pautello');
+          },
+        },
+        { type: 'separator' },
+        {
           label: 'Acerca de Pautello',
           click: (menuItem, browserWindow) => {
             dialog.showMessageBox(browserWindow, {
@@ -57,7 +64,7 @@ function createApplicationMenu() {
               title: 'Pautello Music Editor',
               message: 'Pautello - Editor Profesional de Partituras',
               detail:
-                'Versión 1.0.0\nGrabado musical profesional, audio multitrack y composición universal.',
+                'Versión 1.0.0\nGrabado musical profesional, audio multitrack y composición universal.\n\nCódigo y soporte: https://github.com/JasonS-V/Pautello',
             });
           },
         },
@@ -138,6 +145,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'Pautello - Editor Profesional de Partituras',
+    icon: path.join(__dirname, app.isPackaged ? '../dist/icon.svg' : '../public/icon.svg'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -150,6 +158,13 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https:') || url.startsWith('http:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

@@ -163,10 +163,10 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: 'playback-export',
     badge: 'Audio & Exportación',
-    title: 'Escucha, Practica y Comparte',
+    title: 'Escucha, Practica y Exporta',
     subtitle: 'Tu música lista para sonar y para el atril',
     content:
-      'Todo tu progreso se guarda automáticamente en tu navegador local. Importar, exportar y compartir viven en el menú «Archivo», y la práctica y el audio en «Herramientas»:',
+      'Todo tu progreso se guarda automáticamente en la aplicación. Importar y exportar viven en el menú «Archivo», y la práctica y el audio en «Herramientas»:',
     targetSelector: '#navbar-menus',
     icon: <Download className="w-6 h-6" />,
     shortcuts: [
