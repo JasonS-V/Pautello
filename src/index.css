@@ -3,55 +3,334 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /*
+   * Fondo y color base ANTES de que React monte: si el body arranca oscuro y el
+   * usuario trabaja en claro (o al reves) se ve un destello al abrir la app.
+   * Los valores son studio.bg (#0c0d12) y slate-100 (#f1f3f7).
+   */
   body {
     margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family:
+      'Inter',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    background-color: #f1f3f7;
+    color: #0f172a;
+  }
+
+  .dark body {
+    background-color: #0c0d12;
+    color: #f1f5f9;
+  }
+
+  /* Seleccion en ambar de identidad, no en azul del navegador. */
+  ::selection {
+    background-color: rgb(245 158 11 / 0.28);
+    color: inherit;
+  }
+
+  /*
+   * Un unico anillo de foco accesible para toda la interfaz. Los componentes no
+   * necesitan declarar su propio `focus-visible`, aunque pueden reforzarlo.
+   */
+  :where(button, a, input, select, textarea, [tabindex], [role='button']):focus-visible {
+    outline: 2px solid rgb(245 158 11 / 0.65);
+    outline-offset: 2px;
   }
 }
 
-/* Custom modern scrollbars */
+/* Custom modern scrollbars, con tono calido en cada tema. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(150, 150, 150, 0.2);
+  background: rgb(148 163 184 / 0.45);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(150, 150, 150, 0.4);
+  background: rgb(100 116 139 / 0.7);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(42 48 66 / 0.95);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgb(66 74 98 / 0.95);
+}
+
+/* La partitura es papel blanco (#ffffff) idéntico en tema claro y oscuro.
+   Las notas y símbolos se resuelven en tinta oscura sobre papel blanco,
+   emulando la partitura impresa física sobre el escritorio de trabajo. */
+.score-sheet,
+.score-page,
+.dark .score-sheet,
+.dark .score-page,
+#score-canvas :is(.score-sheet, .score-page),
+.dark #score-canvas :is(.score-sheet, .score-page) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+#score-canvas
+  :is(.score-sheet, .score-page)
+  :is(.dark\:text-slate-100, .dark\:text-slate-200, .dark\:text-slate-300) {
+  color: #0f172a !important;
+}
+
+#score-canvas :is(.score-sheet, .score-page) .dark\:text-slate-400 {
+  color: #64748b !important;
+}
+
+#score-canvas
+  :is(.score-sheet, .score-page)
+  :is(.dark\:fill-slate-100, .dark\:fill-slate-200, .dark\:fill-slate-300) {
+  fill: #0f172a !important;
+}
+
+#score-canvas :is(.score-sheet, .score-page) .dark\:fill-slate-400 {
+  fill: #64748b !important;
+}
+
+#score-canvas
+  :is(.score-sheet, .score-page)
+  :is(.dark\:border-slate-800, .dark\:border-slate-800\/80, .dark\:border-studio-border) {
+  border-color: #e2e8f0 !important;
+}
+
+/* Utility to hide scrollbars while retaining scrollability */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Scroll fino para menus desplegables y listas largas dentro de un panel. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+/* Suppress ugly unstyled browser number input spinners */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/*
+ * Slider de volumen y tempo: pista con progreso relleno y pulgar circular
+ * consistente. La variable `--range-progress` la fija el componente.
+ */
+input[type='range'].studio-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    #f59e0b 0%,
+    #f59e0b var(--range-progress, 50%),
+    rgb(148 163 184 / 0.35) var(--range-progress, 50%),
+    rgb(148 163 184 / 0.35) 100%
+  );
+  cursor: pointer;
+}
+input[type='range'].studio-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgb(2 3 8 / 0.4);
+  transition: transform 120ms ease;
+}
+input[type='range'].studio-range::-webkit-slider-thumb:hover,
+input[type='range'].studio-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+input[type='range'].studio-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  border: 2px solid #fff;
+}
+
+/* Custom Styled Select Dropdowns with native-fluid SVG Chevron */
+.select-styled {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.75' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.6rem center;
+  background-repeat: no-repeat;
+  background-size: 1.15em 1.15em;
+  padding-right: 2rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.select-styled:hover {
+  filter: brightness(0.98);
+}
+
+.dark .select-styled {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.75' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+}
+
+.dark .select-styled:hover {
+  filter: brightness(1.08);
+}
+
+/* Accessibility: Respect user reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Print Stylesheet for High Definition Vector Sheet Music */
 @media print {
-  body {
-    background: white !important;
-    color: black !important;
+  @page {
+    /* Compatible con A4 y Carta (Letter) con márgenes seguros para cualquier impresora */
+    size: auto;
+    margin: 10mm 12mm;
   }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Solo papel: fuera cromo de aplicación, barras, controles, diálogos y elementos interactivos */
   header,
   nav,
   aside,
+  footer,
   button,
   .no-print,
+  #toolbar-container,
   #piano-container,
   #sidebar-container,
   #inspector-container,
+  #navbar-transport,
   .measure-hotspot,
   .fixed,
-  [role="dialog"] {
+  [role='dialog'],
+  [data-print='hide'] {
     display: none !important;
   }
+
+  /* Colapsar todos los contenedores de la aplicación para que no restrinjan el ancho de página */
+  #root,
+  #root > div,
+  main,
+  #score-canvas,
+  .score-view-container,
+  .score-paged-layout {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    position: static !important;
+    float: none !important;
+  }
+
   .score-sheet {
+    display: block !important;
     box-shadow: none !important;
     border: none !important;
     padding: 0 !important;
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
-    background: white !important;
+    min-width: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Paginado: una hoja exacta por página impresa, sin cortes a mitad de sistema ni desbordamientos */
+  .score-page {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-sizing: border-box !important;
+  }
+  .score-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Escalado responsivo y nítido de los sistemas musicales al ancho de página */
+  .score-page svg,
+  .score-sheet svg {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Evitar saltos de página dentro de un sistema */
+  .score-sheet > div,
+  .system-container {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Pure vector rendering contrast for print */
+  svg {
     color: black !important;
   }
   svg text {

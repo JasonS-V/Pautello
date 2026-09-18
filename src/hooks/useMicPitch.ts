@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { detectPitchFromBuffer, PitchDetectionResult } from '../utils/pitchDetection';
+import { OnsetDetector } from '../audio/practiceEngine';
 
 interface UseMicPitchOptions {
   onPitchDetected?: (result: PitchDetectionResult) => void;
@@ -16,13 +17,25 @@ export function useMicPitch(options: UseMicPitchOptions = {}) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // Guarda síncrona de arranque: `isListening` es estado de React y no se
+  // actualiza hasta el siguiente render, así que dos clics seguidos lo verían a
+  // `false` los dos y acabarían pidiendo el micrófono dos veces.
+  const isStartingRef = useRef<boolean>(false);
+  // Cada stopListening invalida los arranques en vuelo (por ejemplo mientras el
+  // navegador muestra el diálogo de permiso).
+  const sessionIdRef = useRef<number>(0);
   const callbackRef = useRef(options.onPitchDetected);
   callbackRef.current = options.onPitchDetected;
 
   const minVolumeRms = options.minVolumeRms ?? 0.015;
 
   const stopListening = useCallback(() => {
-    if (animationFrameRef.current) {
+    // Invalida cualquier arranque que siga esperando permiso: al resolver, se
+    // dará cuenta de que ya no toca y liberará su stream en vez de encender el
+    // micrófono a espaldas del usuario.
+    sessionIdRef.current += 1;
+
+    if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
@@ -37,12 +50,19 @@ export function useMicPitch(options: UseMicPitchOptions = {}) {
       audioContextRef.current = null;
     }
 
+    // Sin esto el bucle seguiría leyendo un analizador ya desconectado.
+    analyserRef.current = null;
+
     setIsListening(false);
     setPitchResult(null);
   }, []);
 
-  const startListening = useCallback(async () => {
-    if (isListening) return;
+  const startListening = useCallback(async (): Promise<void> => {
+    // No reabrir el micrófono si ya está activo o si hay un arranque en curso.
+    if (mediaStreamRef.current || isStartingRef.current) return;
+
+    isStartingRef.current = true;
+    const session = sessionIdRef.current;
     setError(null);
 
     try {
@@ -57,6 +77,12 @@ export function useMicPitch(options: UseMicPitchOptions = {}) {
           noiseSuppression: false,
         },
       });
+
+      // Se pudo detener la escucha mientras el navegador pedía permiso.
+      if (session !== sessionIdRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
       mediaStreamRef.current = stream;
       setHasPermission(true);
@@ -77,42 +103,40 @@ export function useMicPitch(options: UseMicPitchOptions = {}) {
 
       const buffer = new Float32Array(analyser.fftSize);
 
-      let lastMidiSent = -1;
-      let lastMidiTime = 0;
+      const onset = new OnsetDetector();
 
       const loop = () => {
         if (!analyserRef.current || !audioContextRef.current) return;
 
         analyserRef.current.getFloatTimeDomainData(buffer);
-        const result = detectPitchFromBuffer(buffer, audioContextRef.current.sampleRate, minVolumeRms);
+        const result = detectPitchFromBuffer(
+          buffer,
+          audioContextRef.current.sampleRate,
+          minVolumeRms
+        );
 
-        if (result) {
-          setPitchResult(result);
-
-          // Throttle / debounce duplicate notes for practice mode
-          const now = Date.now();
-          if (result.midi !== lastMidiSent || now - lastMidiTime > 300) {
-            lastMidiSent = result.midi;
-            lastMidiTime = now;
-            if (callbackRef.current) {
-              callbackRef.current(result);
-            }
-          }
-        } else {
-          setPitchResult(null);
+        // Solo se avisa del ataque de cada nota: sostenerla no genera avisos
+        // repetidos (antes se contaba cada lectura como un intento nuevo).
+        if (onset.update(result?.midi ?? null, Date.now()) && result) {
+          callbackRef.current?.(result);
         }
+
+        setPitchResult(result ?? null);
 
         animationFrameRef.current = requestAnimationFrame(loop);
       };
 
       animationFrameRef.current = requestAnimationFrame(loop);
     } catch (err: unknown) {
-      const errMsg =
-        err instanceof Error ? err.message : 'No se pudo acceder al micrófono.';
+      const errMsg = err instanceof Error ? err.message : 'No se pudo acceder al micrófono.';
       setError(errMsg);
       setIsListening(false);
+    } finally {
+      // Solo lo libera el propio intento: mientras esté en true no puede
+      // empezar otro, así que nunca pisa la guarda de un arranque más reciente.
+      isStartingRef.current = false;
     }
-  }, [isListening, minVolumeRms]);
+  }, [minVolumeRms]);
 
   useEffect(() => {
     return () => {

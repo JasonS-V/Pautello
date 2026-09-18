@@ -1,0 +1,18 @@
+# Dependencias y salidas de build
+node_modules/
+dist/
+dist-installer/
+release/
+
+# Informe HTML de cobertura (generado por vitest --coverage)
+coverage/
+
+# Assets: partituras de ejemplo en PDF y recursos estáticos
+partituras_reales/
+public/
+
+# Lockfile gestionado por pnpm
+pnpm-lock.yaml
+
+# Artefactos generados por TypeScript
+*.tsbuildinfo

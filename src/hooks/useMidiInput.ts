@@ -1,74 +1,108 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-// Web MIDI safe types
-type AnyMIDIAccess = any;
-type AnyMIDIMessageEvent = any;
-
+export interface MidiNoteEvent {
+  midi: number;
+  velocity: number;
+}
 
 interface UseMidiInputOptions {
   onNoteOn: (midi: number, velocity: number) => void;
+  onChordOn?: (notes: MidiNoteEvent[]) => void;
   onNoteOff?: (midi: number) => void;
+  chordWindowMs?: number;
 }
 
-export function useMidiInput({ onNoteOn, onNoteOff }: UseMidiInputOptions) {
+export function useMidiInput({
+  onNoteOn,
+  onChordOn,
+  onNoteOff,
+  chordWindowMs = 35,
+}: UseMidiInputOptions) {
   const [isSupported, setIsSupported] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectedDevices, setConnectedDevices] = useState<string[]>([]);
   const [lastNote, setLastNote] = useState<{ midi: number; velocity: number } | null>(null);
 
-  const midiAccessRef = useRef<AnyMIDIAccess | null>(null);
+  const midiAccessRef = useRef<MIDIAccess | null>(null);
   const onNoteOnRef = useRef(onNoteOn);
+  const onChordOnRef = useRef(onChordOn);
   const onNoteOffRef = useRef(onNoteOff);
+
+  const chordBufferRef = useRef<MidiNoteEvent[]>([]);
+  const chordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onNoteOnRef.current = onNoteOn;
+    onChordOnRef.current = onChordOn;
     onNoteOffRef.current = onNoteOff;
-  }, [onNoteOn, onNoteOff]);
+  }, [onNoteOn, onChordOn, onNoteOff]);
 
-  const handleMidiMessage = useCallback((event: AnyMIDIMessageEvent) => {
-    const data = event.data;
-    if (!data || data.length < 2) return;
+  const handleMidiMessage = useCallback(
+    (event: MIDIMessageEvent) => {
+      const data = event.data;
+      if (!data || data.length < 2) return;
 
-    const status = data[0] & 0xf0;
-    const note = data[1];
-    const velocity = data.length > 2 ? data[2] : 64;
+      const status = data[0] & 0xf0;
+      const note = data[1];
+      const velocity = data.length > 2 ? data[2] : 64;
 
-    if (status === 0x90 && velocity > 0) {
-      // Note On
-      setLastNote({ midi: note, velocity });
-      onNoteOnRef.current?.(note, velocity);
-    } else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
-      // Note Off
-      onNoteOffRef.current?.(note);
-    }
-  }, []);
+      if (status === 0x90 && velocity > 0) {
+        // Note On
+        setLastNote({ midi: note, velocity });
 
-  const updateDevices = useCallback((access: AnyMIDIAccess) => {
-    const names: string[] = [];
-    if (access && access.inputs) {
-      access.inputs.forEach((input: any) => {
+        if (onChordOnRef.current && chordWindowMs > 0) {
+          chordBufferRef.current.push({ midi: note, velocity });
+          if (chordTimerRef.current) {
+            clearTimeout(chordTimerRef.current);
+          }
+          chordTimerRef.current = setTimeout(() => {
+            const notes = [...chordBufferRef.current];
+            chordBufferRef.current = [];
+            chordTimerRef.current = null;
+            if (notes.length > 1) {
+              onChordOnRef.current?.(notes);
+            } else if (notes.length === 1) {
+              onNoteOnRef.current?.(notes[0].midi, notes[0].velocity);
+            }
+          }, chordWindowMs);
+        } else {
+          onNoteOnRef.current?.(note, velocity);
+        }
+      } else if (status === 0x80 || (status === 0x90 && velocity === 0)) {
+        // Note Off
+        onNoteOffRef.current?.(note);
+      }
+    },
+    [chordWindowMs]
+  );
+
+  const updateDevices = useCallback(
+    (access: MIDIAccess) => {
+      const names: string[] = [];
+      access.inputs.forEach((input) => {
         if (input.state === 'connected') {
           names.push(input.name || 'Dispositivo MIDI');
           input.onmidimessage = handleMidiMessage;
         }
       });
-    }
 
-    setConnectedDevices(names);
-    setIsConnected(names.length > 0);
-  }, [handleMidiMessage]);
+      setConnectedDevices(names);
+      setIsConnected(names.length > 0);
+    },
+    [handleMidiMessage]
+  );
 
   useEffect(() => {
-    const nav = navigator as any;
-    if (!nav || typeof nav.requestMIDIAccess !== 'function') {
+    if (typeof navigator.requestMIDIAccess !== 'function') {
       setIsSupported(false);
       return;
     }
 
     setIsSupported(true);
 
-    nav.requestMIDIAccess({ sysex: false })
-      .then((access: any) => {
+    navigator
+      .requestMIDIAccess({ sysex: false })
+      .then((access) => {
         midiAccessRef.current = access;
         updateDevices(access);
 
@@ -76,17 +110,18 @@ export function useMidiInput({ onNoteOn, onNoteOff }: UseMidiInputOptions) {
           updateDevices(access);
         };
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         console.warn('Acceso a Web MIDI denegado o no disponible:', err);
         setIsSupported(false);
       });
 
     return () => {
-      if (midiAccessRef.current && midiAccessRef.current.inputs) {
-        midiAccessRef.current.inputs.forEach((input: any) => {
-          input.onmidimessage = null;
-        });
+      if (chordTimerRef.current) {
+        clearTimeout(chordTimerRef.current);
       }
+      midiAccessRef.current?.inputs.forEach((input) => {
+        input.onmidimessage = null;
+      });
     };
   }, [updateDevices]);
 

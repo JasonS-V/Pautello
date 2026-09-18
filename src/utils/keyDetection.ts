@@ -1,11 +1,11 @@
-import { Score, Pitch, KeySignature, Step, Accidental } from '../types/music';
+import { Score, Pitch, KeySignature, Step, Accidental, getItemPitches } from '../types/music';
 import { pitchToMidi, getItemBeats, KEY_SIGNATURE_DATA } from '../constants/pitches';
 import { transposeChord } from './chordUtils';
 
 // Krumhansl-Kessler key profiles for major and minor keys
 // Reference: Krumhansl, C. L. (1990). Cognitive Foundations of Musical Pitch.
 const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
 // Pitch Class to semitones from C: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
 export interface KeyCandidate {
@@ -91,9 +91,9 @@ export function detectKeyFromScore(score: Score): DetectedKeyResult {
   const pitchClassDistribution = new Array(12).fill(0);
   let totalNoteWeight = 0;
 
-  score.staves.forEach(staff => {
-    staff.measures.forEach(measure => {
-      measure.items.forEach(item => {
+  score.staves.forEach((staff) => {
+    staff.measures.forEach((measure) => {
+      measure.items.forEach((item) => {
         if (item.type === 'note' && item.pitch) {
           const midi = pitchToMidi(item.pitch);
           const pitchClass = midi % 12;
@@ -122,7 +122,7 @@ export function detectKeyFromScore(score: Score): DetectedKeyResult {
   let bestCandidate = ALL_KEYS[0];
   let highestScore = -Infinity;
 
-  ALL_KEYS.forEach(candidate => {
+  ALL_KEYS.forEach((candidate) => {
     const template = candidate.isMajor ? MAJOR_PROFILE : MINOR_PROFILE;
     // Rotate template vector by root pitch class
     const rotatedTemplate = new Array(12);
@@ -154,8 +154,8 @@ export function detectKeyFromScore(score: Score): DetectedKeyResult {
  * Calculates the shortest directed semitone offset between two keys
  */
 export function getSemitoneOffsetBetweenKeys(fromKey: KeySignature, toKey: KeySignature): number {
-  const fromCandidate = ALL_KEYS.find(k => k.key === fromKey) || ALL_KEYS[0];
-  const toCandidate = ALL_KEYS.find(k => k.key === toKey) || ALL_KEYS[0];
+  const fromCandidate = ALL_KEYS.find((k) => k.key === fromKey) || ALL_KEYS[0];
+  const toCandidate = ALL_KEYS.find((k) => k.key === toKey) || ALL_KEYS[0];
 
   let diff = (toCandidate.rootPitchClass - fromCandidate.rootPitchClass) % 12;
   if (diff > 6) diff -= 12;
@@ -216,11 +216,7 @@ export function transposePitch(pitch: Pitch, semitones: number, preferSharps = t
 /**
  * Transposes all notes in a Score by given semitones and optionally updates the key signature
  */
-export function transposeScoreNotes(
-  score: Score,
-  semitones: number,
-  newKey?: KeySignature
-): Score {
+export function transposeScoreNotes(score: Score, semitones: number, newKey?: KeySignature): Score {
   if (semitones === 0 && (!newKey || newKey === score.keySignature)) {
     return score;
   }
@@ -232,11 +228,16 @@ export function transposeScoreNotes(
   const cloned = JSON.parse(JSON.stringify(score)) as Score;
   if (newKey) cloned.keySignature = newKey;
 
-  cloned.staves.forEach(staff => {
-    staff.measures.forEach(measure => {
-      measure.items.forEach(item => {
-        if (item.type === 'note' && item.pitch) {
-          item.pitch = transposePitch(item.pitch, semitones, preferSharps);
+  cloned.staves.forEach((staff) => {
+    staff.measures.forEach((measure) => {
+      measure.items.forEach((item) => {
+        if (item.type === 'note') {
+          const pitches = getItemPitches(item);
+          if (pitches.length > 0) {
+            const transposed = pitches.map((p) => transposePitch(p, semitones, preferSharps));
+            item.pitches = transposed;
+            item.pitch = transposed[0];
+          }
         }
         if (item.chord) {
           item.chord = transposeChord(item.chord, semitones, preferSharps);

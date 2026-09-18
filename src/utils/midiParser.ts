@@ -1,4 +1,13 @@
-import { Score, ScoreItem, Step, Accidental, Pitch, NoteDuration, KeySignature, Clef } from '../types/music';
+import {
+  Score,
+  ScoreItem,
+  Step,
+  Accidental,
+  Pitch,
+  NoteDuration,
+  KeySignature,
+  Clef,
+} from '../types/music';
 
 interface ParsedMidiNote {
   midi: number;
@@ -12,20 +21,20 @@ interface ParsedMidiNote {
 function readVarLength(data: Uint8Array, offset: number): { value: number; bytesRead: number } {
   let value = 0;
   let bytesRead = 0;
-  let byte = 0;
 
-  do {
-    if (offset + bytesRead >= data.length) break;
-    byte = data[offset + bytesRead];
+  while (offset + bytesRead < data.length) {
+    const byte = data[offset + bytesRead];
     value = (value << 7) | (byte & 0x7f);
     bytesRead++;
-  } while (byte & 0x80);
+    // El byte alto a 1 indica que la longitud continúa en el siguiente byte.
+    if ((byte & 0x80) === 0) break;
+  }
 
   return { value, bytesRead };
 }
 
 /**
- * Parses a standard MIDI binary buffer (format 0 or 1) into a Sonata Score
+ * Parses a standard MIDI binary buffer (format 0 or 1) into a Pautello Score
  */
 export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI'): Score {
   const data = new Uint8Array(arrayBuffer);
@@ -34,11 +43,14 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
   // 1. Verify MThd header
   const headerTag = String.fromCharCode(...data.slice(pos, pos + 4));
   if (headerTag !== 'MThd') {
-    throw new Error('El archivo seleccionado no es un archivo MIDI válido (cabecera MThd ausente).');
+    throw new Error(
+      'El archivo seleccionado no es un archivo MIDI válido (cabecera MThd ausente).'
+    );
   }
   pos += 4;
 
-  const headerLength = (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
+  const headerLength =
+    (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
   pos += 4;
 
   const _format = (data[pos] << 8) | data[pos + 1];
@@ -49,7 +61,7 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
   pos += headerLength;
 
   let title = fileName.replace(/\.[^/.]+$/, '');
-  let composer = 'Desconocido';
+  const composer = 'Desconocido';
   let tempo = 120;
   let beats = 4;
   let beatType = 4;
@@ -63,12 +75,14 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
     pos += 4;
     if (trackTag !== 'MTrk') {
       // Skip unknown chunk
-      const chunkLen = (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
+      const chunkLen =
+        (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
       pos += 4 + chunkLen;
       continue;
     }
 
-    const trackLen = (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
+    const trackLen =
+      (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3];
     pos += 4;
     const trackEnd = pos + trackLen;
 
@@ -124,16 +138,38 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
           const isMinor = data[pos + 1] === 1;
 
           const FIFTHS_MAJOR: Record<number, KeySignature> = {
-            0: 'C', 1: 'G', 2: 'D', 3: 'A', 4: 'E', 5: 'B', 6: 'F#', 7: 'C#',
-            '-1': 'F', '-2': 'Bb', '-3': 'Eb', '-4': 'Ab', '-5': 'Db', '-6': 'Gb', '-7': 'Cb'
+            0: 'C',
+            1: 'G',
+            2: 'D',
+            3: 'A',
+            4: 'E',
+            5: 'B',
+            6: 'F#',
+            7: 'C#',
+            '-1': 'F',
+            '-2': 'Bb',
+            '-3': 'Eb',
+            '-4': 'Ab',
+            '-5': 'Db',
+            '-6': 'Gb',
+            '-7': 'Cb',
           };
           const FIFTHS_MINOR: Record<number, KeySignature> = {
-            0: 'Am', 1: 'Em', 2: 'Bm', 3: 'F#m', 4: 'C#m', 5: 'G#m', 6: 'D#m',
-            '-1': 'Dm', '-2': 'Gm', '-3': 'Cm', '-4': 'Fm', '-5': 'Bbm', '-6': 'Ebm'
+            0: 'Am',
+            1: 'Em',
+            2: 'Bm',
+            3: 'F#m',
+            4: 'C#m',
+            5: 'G#m',
+            6: 'D#m',
+            '-1': 'Dm',
+            '-2': 'Gm',
+            '-3': 'Cm',
+            '-4': 'Fm',
+            '-5': 'Bbm',
+            '-6': 'Ebm',
           };
-          keySignature = isMinor
-            ? (FIFTHS_MINOR[sf] || 'Am')
-            : (FIFTHS_MAJOR[sf] || 'C');
+          keySignature = isMinor ? FIFTHS_MINOR[sf] || 'Am' : FIFTHS_MAJOR[sf] || 'C';
         }
 
         pos += metaLen;
@@ -195,9 +231,10 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
   const ticksPerMeasure = beatsPerMeasure * ticksPerQuarter;
 
   // Determine appropriate clef based on average note pitch
-  const avgMidi = collectedNotes.length > 0
-    ? collectedNotes.reduce((acc, n) => acc + n.midi, 0) / collectedNotes.length
-    : 60;
+  const avgMidi =
+    collectedNotes.length > 0
+      ? collectedNotes.reduce((acc, n) => acc + n.midi, 0) / collectedNotes.length
+      : 60;
   const clef: Clef = avgMidi < 55 ? 'bass' : 'treble';
 
   const quantizeDuration = (ticks: number): { duration: NoteDuration; isDotted: boolean } => {
@@ -237,9 +274,10 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
   };
 
   // Group notes into measures
-  const maxTick = collectedNotes.length > 0
-    ? Math.max(...collectedNotes.map(n => n.startTick + n.durationTicks))
-    : ticksPerMeasure;
+  const maxTick =
+    collectedNotes.length > 0
+      ? Math.max(...collectedNotes.map((n) => n.startTick + n.durationTicks))
+      : ticksPerMeasure;
   const totalMeasures = Math.max(1, Math.ceil(maxTick / ticksPerMeasure));
 
   const measures = [];
@@ -248,7 +286,7 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
     const mEndTick = (m + 1) * ticksPerMeasure;
 
     const measureNotes = collectedNotes.filter(
-      n => n.startTick >= mStartTick && n.startTick < mEndTick
+      (n) => n.startTick >= mStartTick && n.startTick < mEndTick
     );
 
     const items: ScoreItem[] = [];
@@ -285,12 +323,14 @@ export function parseMidiToScore(arrayBuffer: ArrayBuffer, fileName = 'Obra MIDI
     tempo: Math.max(30, Math.min(300, tempo)),
     timeSignature: { beats, beatType },
     keySignature,
-    staves: [{
-      id: 'staff-1',
-      name: 'Melodía MIDI',
-      clef,
-      measures,
-    }],
+    staves: [
+      {
+        id: 'staff-1',
+        name: 'Melodía MIDI',
+        clef,
+        measures,
+      },
+    ],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

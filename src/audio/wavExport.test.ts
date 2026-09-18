@@ -67,16 +67,41 @@ describe('WAV Audio Export and RIFF Encoding', () => {
             {
               id: 'm1',
               items: [
-                { id: 'n1', type: 'note', duration: 'q', pitch: { step: 'C', octave: 4, accidental: null } },
-                { id: 'n2', type: 'note', duration: 'q', pitch: { step: 'D', octave: 4, accidental: null } },
-                { id: 'n3', type: 'note', duration: 'q', pitch: { step: 'E', octave: 4, accidental: null } },
-                { id: 'n4', type: 'note', duration: 'q', pitch: { step: 'F', octave: 4, accidental: null } },
+                {
+                  id: 'n1',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                },
+                {
+                  id: 'n2',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'D', octave: 4, accidental: null },
+                },
+                {
+                  id: 'n3',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'E', octave: 4, accidental: null },
+                },
+                {
+                  id: 'n4',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'F', octave: 4, accidental: null },
+                },
               ],
             },
             {
               id: 'm2',
               items: [
-                { id: 'n5', type: 'note', duration: 'w', pitch: { step: 'G', octave: 4, accidental: null } },
+                {
+                  id: 'n5',
+                  type: 'note',
+                  duration: 'w',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                },
               ],
             },
           ],
@@ -87,5 +112,73 @@ describe('WAV Audio Export and RIFF Encoding', () => {
     // 2 bars of 4/4 at 120 BPM = 8 beats * 0.5s = 4.0s
     const duration = calculateScoreDuration(testScore);
     expect(duration).toBe(4.0);
+  });
+
+  it('calculates score duration accurately without doubling in polyphonic measures', () => {
+    const polyScore: Score = {
+      id: 'poly-wav-test',
+      title: 'Polyphony Test',
+      composer: 'Tester',
+      tempo: 120, // 0.5s per beat
+      timeSignature: { beats: 4, beatType: 4 }, // 4 beats = 2.0s per measure
+      keySignature: 'C',
+      createdAt: 1000,
+      updatedAt: 1000,
+      staves: [
+        {
+          id: 'staff-1',
+          name: 'Piano',
+          clef: 'treble',
+          measures: [
+            {
+              id: 'm1',
+              items: [
+                // Voice 1: 4 quarter notes = 4.0 beats
+                {
+                  id: 'v1-1',
+                  type: 'note',
+                  duration: 'q',
+                  voice: 1,
+                  pitch: { step: 'C', octave: 5, accidental: null },
+                },
+                {
+                  id: 'v1-2',
+                  type: 'note',
+                  duration: 'q',
+                  voice: 1,
+                  pitch: { step: 'D', octave: 5, accidental: null },
+                },
+                {
+                  id: 'v1-3',
+                  type: 'note',
+                  duration: 'q',
+                  voice: 1,
+                  pitch: { step: 'E', octave: 5, accidental: null },
+                },
+                {
+                  id: 'v1-4',
+                  type: 'note',
+                  duration: 'q',
+                  voice: 1,
+                  pitch: { step: 'F', octave: 5, accidental: null },
+                },
+                // Voice 2: 1 whole note = 4.0 beats
+                {
+                  id: 'v2-1',
+                  type: 'note',
+                  duration: 'w',
+                  voice: 2,
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    // 1 bar of 4/4 at 120 BPM = 4 beats * 0.5s = 2.0s (NOT 4.0s from summing both voices)
+    const duration = calculateScoreDuration(polyScore);
+    expect(duration).toBe(2.0);
   });
 });

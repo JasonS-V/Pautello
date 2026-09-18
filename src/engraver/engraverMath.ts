@@ -17,7 +17,7 @@ function absoluteStepToPitch(absStep: number, accidental: Accidental = null): Pi
   return {
     step: DIATONIC_ORDER[stepIdx],
     octave,
-    accidental
+    accidental,
   };
 }
 
@@ -47,7 +47,11 @@ export function pitchToStaffStep(pitch: Pitch, clef: Clef): number {
 /**
  * Inverts staff step back into a Pitch
  */
-export function staffStepToPitch(stepValue: number, clef: Clef, accidental: Accidental = null): Pitch {
+export function staffStepToPitch(
+  stepValue: number,
+  clef: Clef,
+  accidental: Accidental = null
+): Pitch {
   let refLine0 = TREBLE_LINE_0_ABS;
   if (clef === 'bass') refLine0 = BASS_LINE_0_ABS;
   else if (clef === 'alto') refLine0 = ALTO_LINE_0_ABS;

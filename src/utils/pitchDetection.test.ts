@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  detectPitchFromBuffer,
-  frequencyToMidiAndCents,
-  centsToStatus,
-} from './pitchDetection';
+import { detectPitchFromBuffer, frequencyToMidiAndCents, centsToStatus } from './pitchDetection';
 
 describe('Pitch Detection Engine', () => {
   it('identifies 440 Hz as A4 with 0 cents deviation', () => {

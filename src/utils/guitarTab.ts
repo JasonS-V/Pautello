@@ -44,10 +44,7 @@ export function getPossibleGuitarPositions(
  * Picks the most ergonomic and standard guitar tab position (string & fret) for a Pitch
  * Prioritizes first position (frets 0-5) and open strings as taught in standard guitar pedagogy.
  */
-export function pitchToGuitarTab(
-  pitch: Pitch,
-  maxFret: number = 20
-): GuitarTabPosition | null {
+export function pitchToGuitarTab(pitch: Pitch, maxFret: number = 20): GuitarTabPosition | null {
   const midi = pitchToMidi(pitch);
   const possible = getPossibleGuitarPositions(midi, maxFret);
 
@@ -59,13 +56,9 @@ export function pitchToGuitarTab(
   // Open strings (fret 0) and low frets (1-5) are heavily preferred
   possible.sort((a, b) => {
     const scoreA =
-      a.fret === 0
-        ? 0
-        : (a.fret <= 5 ? a.fret : a.fret * 1.6) + (a.stringNumber - 1) * 0.15;
+      a.fret === 0 ? 0 : (a.fret <= 5 ? a.fret : a.fret * 1.6) + (a.stringNumber - 1) * 0.15;
     const scoreB =
-      b.fret === 0
-        ? 0
-        : (b.fret <= 5 ? b.fret : b.fret * 1.6) + (b.stringNumber - 1) * 0.15;
+      b.fret === 0 ? 0 : (b.fret <= 5 ? b.fret : b.fret * 1.6) + (b.stringNumber - 1) * 0.15;
     return scoreA - scoreB;
   });
 

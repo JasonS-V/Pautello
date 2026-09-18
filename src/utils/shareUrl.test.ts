@@ -11,24 +11,28 @@ describe('shareUrl', () => {
       tempo: 128,
       timeSignature: { beats: 3, beatType: 4 },
       keySignature: 'G',
-      staves: [{
-        id: 's1',
-        name: 'Violín',
-        clef: 'treble',
-        measures: [{
-          id: 'm1',
-          items: [
+      staves: [
+        {
+          id: 's1',
+          name: 'Violín',
+          clef: 'treble',
+          measures: [
             {
-              id: 'item1',
-              type: 'note',
-              pitch: { step: 'G', octave: 4, accidental: null },
-              duration: 'h',
-              chord: 'G',
-              lyric: 'Luz',
-            }
-          ]
-        }]
-      }],
+              id: 'm1',
+              items: [
+                {
+                  id: 'item1',
+                  type: 'note',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                  duration: 'h',
+                  chord: 'G',
+                  lyric: 'Luz',
+                },
+              ],
+            },
+          ],
+        },
+      ],
       createdAt: 1000,
       updatedAt: 2000,
     };

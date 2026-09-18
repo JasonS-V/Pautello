@@ -1,0 +1,27 @@
+{
+  "name": "Pautello — Editor de Partituras",
+  "short_name": "Pautello",
+  "description": "Editor y creador de partituras gratuito, moderno y sin límites. Escribe, escucha y exporta, también sin conexión.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c0d12",
+  "theme_color": "#0c0d12",
+  "categories": ["music", "productivity", "education"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

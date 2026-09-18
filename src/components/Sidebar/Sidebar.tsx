@@ -1,30 +1,20 @@
 import React from 'react';
 import {
-  Music2,
   FileMusic,
-  Download,
+  GraduationCap,
+  Heart,
+  HelpCircle,
   Keyboard,
   Settings,
-  HelpCircle,
+  Share2,
+  Sparkles,
   Sun,
   Moon,
-  Heart,
-  Sparkles,
   X,
-  Sliders,
-  Upload,
-  GraduationCap,
-  Share2,
-  Activity,
-  Headphones,
-} from 'lucide-react';
+} from '../ui/icons';
 import { NamingConvention } from '../../types/music';
 
-export type SidebarTab = 'editor' | 'templates' | 'mixer' | 'piano' | 'export';
-
 interface SidebarProps {
-  activeTab: SidebarTab;
-  onSelectTab: (tab: SidebarTab) => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   namingConvention: NamingConvention;
@@ -36,22 +26,15 @@ interface SidebarProps {
   isPianoCollapsed: boolean;
   onTogglePiano: () => void;
   onOpenTemplates: () => void;
-  onOpenMixer: () => void;
-  onOpenExport: () => void;
-  onOpenImport: () => void;
-  onOpenShare?: () => void;
-  onOpenTuner?: () => void;
-  onOpenPlayAlong?: () => void;
-  onOpenShortcuts: () => void;
+  onOpenShare: () => void;
   onOpenDonate: () => void;
   onOpenTutorial: () => void;
+  onOpenShortcuts: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  activeTab,
-  onSelectTab,
   theme,
   onToggleTheme,
   namingConvention,
@@ -63,15 +46,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isPianoCollapsed,
   onTogglePiano,
   onOpenTemplates,
-  onOpenMixer,
-  onOpenExport,
-  onOpenImport,
   onOpenShare,
-  onOpenTuner,
-  onOpenPlayAlong,
-  onOpenShortcuts,
   onOpenDonate,
   onOpenTutorial,
+  onOpenShortcuts,
   isOpenMobile = false,
   onCloseMobile,
 }) => {
@@ -79,7 +57,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <>
       {/* Mobile Backdrop Overlay */}
       {isOpenMobile && (
-        <div
+        <button
+          type="button"
+          aria-label="Cerrar menú lateral"
           onClick={onCloseMobile}
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs lg:hidden no-print"
         />
@@ -87,7 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside
         id="sidebar-container"
-        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-64 bg-white dark:bg-[#111319] text-slate-700 dark:text-slate-300 flex flex-col justify-between p-5 border-r border-slate-200 dark:border-[#202433] select-none shrink-0 transition-transform duration-200 lg:translate-x-0 ${
+        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-64 bg-white dark:bg-studio-surface text-slate-700 dark:text-slate-300 flex flex-col justify-between p-5 border-r border-slate-200 dark:border-studio-border select-none shrink-0 transition-transform duration-200 lg:translate-x-0 ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full'
         } min-h-screen overflow-y-auto`}
       >
@@ -100,19 +80,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
                   <path
                     d="M6 24 C6 14, 14 6, 24 6"
-                    stroke="#fed7aa"
+                    className="stroke-pastel-amber"
                     strokeWidth="4"
                     strokeLinecap="round"
                   />
                   <path
                     d="M11 26 C11 18, 17 11, 26 11"
-                    stroke="#c4b5fd"
+                    className="stroke-pastel-purple"
                     strokeWidth="4"
                     strokeLinecap="round"
                   />
                   <path
                     d="M16 28 C16 22, 20 16, 28 16"
-                    stroke="#bef264"
+                    className="stroke-pastel-lime"
                     strokeWidth="4"
                     strokeLinecap="round"
                   />
@@ -120,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div>
                 <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white block leading-none">
-                  Sonata
+                  Pautello
                 </span>
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide">
                   Studio Libre
@@ -132,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {onCloseMobile && (
               <button
                 onClick={onCloseMobile}
-                className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822]"
+                className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -140,35 +120,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Navigation List */}
-          <nav className="space-y-1">
-            {/* Tab: Editor */}
-            <button
-              onClick={() => {
-                onSelectTab('editor');
-                onCloseMobile?.();
-              }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all relative ${
-                activeTab === 'editor'
-                  ? 'text-[#f59e0b] bg-amber-500/10 dark:bg-[#1a1d29]'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Music2 className="w-4 h-4" />
-                <span>Editor</span>
-              </div>
-              {activeTab === 'editor' && (
-                <span className="w-1.5 h-5 bg-[#f59e0b] rounded-full absolute right-2" />
-              )}
-            </button>
-
-            {/* Tab: Plantillas / Obras */}
+          <nav className="space-y-1" aria-label="Acciones principales">
+            {/* Obras y Plantillas */}
             <button
               onClick={() => {
                 onOpenTemplates();
                 onCloseMobile?.();
               }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover transition-all"
             >
               <div className="flex items-center gap-3">
                 <FileMusic className="w-4 h-4" />
@@ -176,7 +135,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </button>
 
-            {/* Tab: Piano Roll / Teclado */}
+            {/* Compartir Enlace */}
+            <button
+              onClick={() => {
+                onOpenShare();
+                onCloseMobile?.();
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-amber-700 dark:text-pastel-amber bg-amber-500/10 dark:bg-amber-400/10 hover:bg-amber-500/20 dark:hover:bg-amber-400/20 transition-all border border-amber-300/40 dark:border-amber-500/20"
+            >
+              <div className="flex items-center gap-3">
+                <Share2 className="w-4 h-4 text-amber-500" />
+                <span className="font-semibold">Compartir Enlace</span>
+              </div>
+              <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-pastel-amber px-1.5 py-0.5 rounded font-bold">
+                URL
+              </span>
+            </button>
+
+            {/* Conmutador: piano virtual de solfeo */}
             <button
               onClick={() => {
                 onTogglePiano();
@@ -184,8 +160,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all ${
                 !isPianoCollapsed
-                  ? 'text-lime-700 dark:text-[#bef264] bg-lime-500/10 dark:bg-[#1a1d29]'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822]'
+                  ? 'text-lime-700 dark:text-pastel-lime bg-lime-500/10 dark:bg-studio-elevated'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -195,118 +171,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                   !isPianoCollapsed
-                    ? 'bg-[#bef264]/30 text-lime-900 dark:text-[#bef264]'
+                    ? 'bg-pastel-lime/30 text-lime-900 dark:text-pastel-lime'
                     : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {!isPianoCollapsed ? 'ON' : 'OFF'}
               </span>
             </button>
-
-            {/* Tab: Sintetizador / Audio */}
-            <button
-              onClick={() => {
-                onOpenMixer();
-                onCloseMobile?.();
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Sliders className="w-4 h-4 text-[#c4b5fd]" />
-                <span>Sintetizador & Audio</span>
-              </div>
-            </button>
-
-            {/* Tab: Importar */}
-            <button
-              onClick={() => {
-                onOpenImport();
-                onCloseMobile?.();
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Upload className="w-4 h-4 text-blue-500" />
-                <span>Importar Partitura</span>
-              </div>
-            </button>
-
-            {/* Tab: Exportar */}
-            <button
-              onClick={() => {
-                onOpenExport();
-                onCloseMobile?.();
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <Download className="w-4 h-4" />
-                <span>Exportar Partitura</span>
-              </div>
-            </button>
-
-            {/* Tab: Compartir Enlace */}
-            {onOpenShare && (
-              <button
-                onClick={() => {
-                  onOpenShare();
-                  onCloseMobile?.();
-                }}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-amber-700 dark:text-[#fed7aa] bg-amber-500/10 dark:bg-amber-400/10 hover:bg-amber-500/20 dark:hover:bg-amber-400/20 transition-all border border-amber-300/40 dark:border-amber-500/20"
-              >
-                <div className="flex items-center gap-3">
-                  <Share2 className="w-4 h-4 text-amber-500" />
-                  <span className="font-semibold">Compartir Enlace</span>
-                </div>
-                <span className="text-[9px] bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-[#fed7aa] px-1.5 py-0.5 rounded font-bold">
-                  URL
-                </span>
-              </button>
-            )}
-
-            {/* Tab: Afinador en Vivo */}
-            {onOpenTuner && (
-              <button
-                onClick={() => {
-                  onOpenTuner();
-                  onCloseMobile?.();
-                }}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <Activity className="w-4 h-4 text-lime-500 dark:text-[#bef264]" />
-                  <span>Afinador en Vivo</span>
-                </div>
-                <span className="text-[9px] bg-lime-500/15 text-lime-600 dark:text-[#bef264] px-1.5 py-0.5 rounded font-bold">
-                  MIC
-                </span>
-              </button>
-            )}
-
-            {/* Tab: Play-Along Multimedia */}
-            {onOpenPlayAlong && (
-              <button
-                onClick={() => {
-                  onOpenPlayAlong();
-                  onCloseMobile?.();
-                }}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161822] transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <Headphones className="w-4 h-4 text-purple-500 dark:text-[#c4b5fd]" />
-                  <span>Play-Along (Audio)</span>
-                </div>
-                <span className="text-[9px] bg-purple-500/15 text-purple-600 dark:text-[#c4b5fd] px-1.5 py-0.5 rounded font-bold">
-                  MP3
-                </span>
-              </button>
-            )}
           </nav>
         </div>
 
         {/* Center/Bottom: Lilac Promo Card (matching the reference image's card) */}
         <div className="my-5">
-          <div className="bg-[#c4b5fd] rounded-2xl p-4 text-purple-950 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
+          <div className="bg-pastel-purple rounded-2xl p-4 text-purple-950 flex flex-col items-center text-center relative overflow-hidden shadow-sm">
             {/* Subtle decoration */}
             <div className="w-10 h-10 rounded-full bg-white/50 flex items-center justify-center mb-2 shadow-inner">
               <Heart className="w-5 h-5 fill-purple-900 text-purple-900" />
@@ -316,7 +193,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ¿Creas o estudias música?
             </h5>
             <p className="text-[10px] text-purple-900/85 mt-1 font-medium leading-relaxed">
-              Sonata es 100% libre y sin muros de pago. Tu apoyo mantiene este software gratuito para todos.
+              Pautello es 100% libre y sin muros de pago. Tu apoyo mantiene este software gratuito
+              para todos.
             </p>
 
             <button
@@ -331,19 +209,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Sidebar Footer: Settings, Theme & Help */}
-        <div className="space-y-1.5 border-t border-slate-200 dark:border-[#202433] pt-4 text-xs text-slate-600 dark:text-slate-400">
+        {/* Sidebar Footer: preferencias, tema y ayuda */}
+        <div className="space-y-1.5 border-t border-slate-200 dark:border-studio-border pt-4 text-xs text-slate-600 dark:text-slate-400">
           {/* Solfeggio / Latin toggle */}
           <button
             onClick={onToggleNamingConvention}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
             title="Alternar entre nomenclatura latina y cifrado americano"
           >
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               <span>Notación</span>
             </div>
-            <span className="font-bold text-[10px] bg-slate-100 dark:bg-[#1d212f] text-slate-800 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-[#2c3244]">
+            <span className="font-bold text-[10px] bg-slate-100 dark:bg-studio-elevated text-slate-800 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-studio-line">
               {namingConvention === 'latin' ? 'Do-Re-Mi' : 'C-D-E'}
             </span>
           </button>
@@ -351,7 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Note names display on staves */}
           <button
             onClick={onToggleShowNoteNames}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
             title="Mostrar nombres de notas sobre las cabezas de nota"
           >
             <div className="flex items-center gap-2">
@@ -362,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
                 showNoteNames
                   ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300'
-                  : 'bg-slate-100 dark:bg-[#1d212f] text-slate-500 dark:text-slate-400'
+                  : 'bg-slate-100 dark:bg-studio-elevated text-slate-500 dark:text-slate-400'
               }`}
             >
               {showNoteNames ? 'Visible' : 'Oculto'}
@@ -373,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {onToggleTablature && (
             <button
               onClick={onToggleTablature}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
               title="Mostrar u ocultar la tablatura de guitarra (TAB) bajo el pentagrama"
             >
               <div className="flex items-center gap-2">
@@ -385,8 +263,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span
                 className={`font-bold text-[10px] px-1.5 py-0.5 rounded ${
                   showTablature
-                    ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-[#fed7aa]'
-                    : 'bg-slate-100 dark:bg-[#1d212f] text-slate-500 dark:text-slate-400'
+                    ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-pastel-amber'
+                    : 'bg-slate-100 dark:bg-studio-elevated text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {showTablature ? 'ON' : 'OFF'}
@@ -397,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Dark / Light Theme Toggle */}
           <button
             onClick={onToggleTheme}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
             title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
           >
             <div className="flex items-center gap-2">
@@ -413,26 +291,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           </button>
 
-          {/* Welcome Guided Tutorial */}
+          {/* Tutorial de bienvenida */}
           <button
             onClick={() => {
               onOpenTutorial();
               onCloseMobile?.();
             }}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
             title="Ver tutorial interactivo de inicio"
           >
             <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
             <span>Tutorial de bienvenida</span>
           </button>
 
-          {/* Shortcuts / Help */}
+          {/* Atajos de teclado */}
           <button
             onClick={() => {
               onOpenShortcuts();
               onCloseMobile?.();
             }}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#161822] hover:text-slate-900 dark:hover:text-white transition-colors"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-studio-hover hover:text-slate-900 dark:hover:text-white transition-colors"
             title="Atajos de teclado (?)"
           >
             <HelpCircle className="w-3.5 h-3.5 text-slate-400" />

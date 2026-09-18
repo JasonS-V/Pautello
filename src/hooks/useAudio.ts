@@ -14,6 +14,8 @@ export function useAudio(score: Score) {
 
   const [isLooping, setIsLooping] = useState<boolean>(false);
   const [metronomeEnabled, setMetronomeEnabled] = useState<boolean>(false);
+  const [chordCompingEnabled, setChordCompingEnabled] = useState<boolean>(false);
+  const [chordCompingVolume, setChordCompingVolume] = useState<number>(0.65);
   const [instrument, setInstrument] = useState<InstrumentType>('piano');
   const [volume, setVolume] = useState<number>(0.7);
 
@@ -24,7 +26,7 @@ export function useAudio(score: Score) {
 
   // Subscribe to playback changes
   useEffect(() => {
-    const unsubscribe = scorePlayer.subscribe(state => {
+    const unsubscribe = scorePlayer.subscribe((state) => {
       setPlaybackState(state);
     });
     return () => {
@@ -37,7 +39,10 @@ export function useAudio(score: Score) {
     if (playbackState.isPlaying) {
       scorePlayer.pause();
     } else {
-      scorePlayer.play(playbackState.currentMeasureIndex, Math.max(0, playbackState.currentItemIndex));
+      scorePlayer.play(
+        playbackState.currentMeasureIndex,
+        Math.max(0, playbackState.currentItemIndex)
+      );
     }
   }, [playbackState]);
 
@@ -46,7 +51,7 @@ export function useAudio(score: Score) {
   }, []);
 
   const toggleLoop = useCallback(() => {
-    setIsLooping(prev => {
+    setIsLooping((prev) => {
       const next = !prev;
       scorePlayer.setLoop(next);
       return next;
@@ -54,16 +59,32 @@ export function useAudio(score: Score) {
   }, []);
 
   const toggleMetronome = useCallback(() => {
-    setMetronomeEnabled(prev => {
+    setMetronomeEnabled((prev) => {
       const next = !prev;
       scorePlayer.setMetronome(next);
       return next;
     });
   }, []);
 
+  const toggleChordComping = useCallback(() => {
+    setChordCompingEnabled((prev) => {
+      const next = !prev;
+      scorePlayer.setChordComping(next, chordCompingVolume);
+      return next;
+    });
+  }, [chordCompingVolume]);
+
+  const handleSetChordCompingVolume = useCallback(
+    (vol: number) => {
+      setChordCompingVolume(vol);
+      scorePlayer.setChordComping(chordCompingEnabled, vol);
+    },
+    [chordCompingEnabled]
+  );
+
   const handleSetInstrument = useCallback((inst: InstrumentType) => {
     setInstrument(inst);
-    audioEngine.instrument = inst;
+    audioEngine.setInstrument(inst);
   }, []);
 
   const handleSetVolume = useCallback((vol: number) => {
@@ -75,12 +96,16 @@ export function useAudio(score: Score) {
     playbackState,
     isLooping,
     metronomeEnabled,
+    chordCompingEnabled,
+    chordCompingVolume,
     instrument,
     volume,
     togglePlay,
     stop,
     toggleLoop,
     toggleMetronome,
+    toggleChordComping,
+    setChordCompingVolume: handleSetChordCompingVolume,
     setInstrument: handleSetInstrument,
     setVolume: handleSetVolume,
   };

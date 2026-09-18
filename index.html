@@ -1,16 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- csp -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sonata - Editor de Partituras Libre y Moderno</title>
-    <meta name="description" content="Editor y creador de partituras gratuito, moderno, intuitivo y sin límites para estudiantes de música y compositores." />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0c0d12" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PWA: la app se puede instalar y, con el service worker del build, abrir
+         sin conexión. En Electron estos enlaces no se usan. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <title>Pautello — Editor de Partituras Libre y Moderno</title>
+    <meta
+      name="description"
+      content="Editor y creador de partituras gratuito, moderno, intuitivo y sin límites para estudiantes de música y compositores."
+    />
+    <script>
+      // Resuelve el tema antes del primer pintado: sin esto, quien trabaja en
+      // claro ve un destello oscuro mientras React lee localStorage.
+      (function () {
+        try {
+          var stored =
+            localStorage.getItem('pautello_theme') ||
+            localStorage.getItem('stavio_theme') ||
+            localStorage.getItem('sonata_theme');
+          var isDark = stored ? stored === 'dark' : true;
+          var root = document.documentElement;
+          root.classList.toggle('dark', isDark);
+          root.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) {
+          /* modo oscuro por defecto */
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-[#0f1117] text-slate-100 antialiased overflow-x-hidden selection:bg-blue-600 selection:text-white">
+  <body class="antialiased overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

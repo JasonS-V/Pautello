@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# Un push nuevo sobre la misma rama cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Formato, lint, typecheck, tests y build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Debe ir antes de setup-node para que el cache de pnpm funcione.
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # Pasos separados a propósito: si algo falla, se ve de un vistazo qué falló.
+      - name: Formato (Prettier)
+        run: pnpm format:check
+
+      - name: Lint (ESLint)
+        run: pnpm lint
+
+      - name: Typecheck (tsc)
+        run: pnpm typecheck
+
+      # Con --coverage: el umbral de vite.config.ts es un gate real, no un
+      # número decorativo que nadie evalúa.
+      - name: Tests y cobertura (vitest)
+        run: pnpm test:coverage
+
+      - name: Build (tsc + vite)
+        run: pnpm build

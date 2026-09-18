@@ -9,7 +9,7 @@ describe('midiParser', () => {
     expect(() => parseMidiToScore(invalidBuffer)).toThrow(/cabecera MThd ausente/);
   });
 
-  it('successfully parses a round-tripped MIDI file exported by Sonata', async () => {
+  it('successfully parses a round-tripped MIDI file exported by Pautello', async () => {
     const originalScore: Score = {
       id: 'test-score',
       title: 'Canción de Prueba',
@@ -17,20 +17,44 @@ describe('midiParser', () => {
       tempo: 130,
       timeSignature: { beats: 4, beatType: 4 },
       keySignature: 'C',
-      staves: [{
-        id: 'staff-1',
-        name: 'Voz',
-        clef: 'treble',
-        measures: [{
-          id: 'm-1',
-          items: [
-            { id: '1', type: 'note', pitch: { step: 'C', octave: 4, accidental: null }, duration: 'q' },
-            { id: '2', type: 'note', pitch: { step: 'E', octave: 4, accidental: null }, duration: 'q' },
-            { id: '3', type: 'note', pitch: { step: 'G', octave: 4, accidental: null }, duration: 'q' },
-            { id: '4', type: 'note', pitch: { step: 'C', octave: 5, accidental: null }, duration: 'q' },
-          ]
-        }]
-      }],
+      staves: [
+        {
+          id: 'staff-1',
+          name: 'Voz',
+          clef: 'treble',
+          measures: [
+            {
+              id: 'm-1',
+              items: [
+                {
+                  id: '1',
+                  type: 'note',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '2',
+                  type: 'note',
+                  pitch: { step: 'E', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '3',
+                  type: 'note',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '4',
+                  type: 'note',
+                  pitch: { step: 'C', octave: 5, accidental: null },
+                  duration: 'q',
+                },
+              ],
+            },
+          ],
+        },
+      ],
       createdAt: 0,
       updatedAt: 0,
     };

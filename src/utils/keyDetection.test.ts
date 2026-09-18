@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { detectKeyFromScore, getSemitoneOffsetBetweenKeys, transposeScoreNotes, transposePitch } from './keyDetection';
+import {
+  detectKeyFromScore,
+  getSemitoneOffsetBetweenKeys,
+  transposeScoreNotes,
+  transposePitch,
+} from './keyDetection';
 import { Score, Pitch } from '../types/music';
 
 describe('keyDetection algorithm', () => {
@@ -11,20 +16,44 @@ describe('keyDetection algorithm', () => {
       tempo: 120,
       timeSignature: { beats: 4, beatType: 4 },
       keySignature: 'C',
-      staves: [{
-        id: 'staff-1',
-        name: 'Staff',
-        clef: 'treble',
-        measures: [{
-          id: 'm-1',
-          items: [
-            { id: '1', type: 'note', pitch: { step: 'C', octave: 4, accidental: null }, duration: 'q' },
-            { id: '2', type: 'note', pitch: { step: 'E', octave: 4, accidental: null }, duration: 'q' },
-            { id: '3', type: 'note', pitch: { step: 'G', octave: 4, accidental: null }, duration: 'q' },
-            { id: '4', type: 'note', pitch: { step: 'C', octave: 5, accidental: null }, duration: 'q' },
-          ]
-        }]
-      }],
+      staves: [
+        {
+          id: 'staff-1',
+          name: 'Staff',
+          clef: 'treble',
+          measures: [
+            {
+              id: 'm-1',
+              items: [
+                {
+                  id: '1',
+                  type: 'note',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '2',
+                  type: 'note',
+                  pitch: { step: 'E', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '3',
+                  type: 'note',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '4',
+                  type: 'note',
+                  pitch: { step: 'C', octave: 5, accidental: null },
+                  duration: 'q',
+                },
+              ],
+            },
+          ],
+        },
+      ],
       createdAt: 0,
       updatedAt: 0,
     };
@@ -43,26 +72,56 @@ describe('keyDetection algorithm', () => {
       tempo: 120,
       timeSignature: { beats: 4, beatType: 4 },
       keySignature: 'C', // initial is C, but notes are G major!
-      staves: [{
-        id: 'staff-1',
-        name: 'Staff',
-        clef: 'treble',
-        measures: [{
-          id: 'm-1',
-          items: [
-            { id: '1', type: 'note', pitch: { step: 'G', octave: 4, accidental: null }, duration: 'h' },
-            { id: '2', type: 'note', pitch: { step: 'B', octave: 4, accidental: null }, duration: 'q' },
-            { id: '3', type: 'note', pitch: { step: 'D', octave: 5, accidental: null }, duration: 'q' },
-          ]
-        }, {
-          id: 'm-2',
-          items: [
-            { id: '4', type: 'note', pitch: { step: 'F', octave: 4, accidental: '#' }, duration: 'q' },
-            { id: '5', type: 'note', pitch: { step: 'G', octave: 4, accidental: null }, duration: 'h' },
-            { id: '6', type: 'rest', duration: 'q' },
-          ]
-        }]
-      }],
+      staves: [
+        {
+          id: 'staff-1',
+          name: 'Staff',
+          clef: 'treble',
+          measures: [
+            {
+              id: 'm-1',
+              items: [
+                {
+                  id: '1',
+                  type: 'note',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                  duration: 'h',
+                },
+                {
+                  id: '2',
+                  type: 'note',
+                  pitch: { step: 'B', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+                {
+                  id: '3',
+                  type: 'note',
+                  pitch: { step: 'D', octave: 5, accidental: null },
+                  duration: 'q',
+                },
+              ],
+            },
+            {
+              id: 'm-2',
+              items: [
+                {
+                  id: '4',
+                  type: 'note',
+                  pitch: { step: 'F', octave: 4, accidental: '#' },
+                  duration: 'q',
+                },
+                {
+                  id: '5',
+                  type: 'note',
+                  pitch: { step: 'G', octave: 4, accidental: null },
+                  duration: 'h',
+                },
+                { id: '6', type: 'rest', duration: 'q' },
+              ],
+            },
+          ],
+        },
+      ],
       createdAt: 0,
       updatedAt: 0,
     };
@@ -100,17 +159,26 @@ describe('keyDetection algorithm', () => {
       tempo: 120,
       timeSignature: { beats: 4, beatType: 4 },
       keySignature: 'C',
-      staves: [{
-        id: 'staff-1',
-        name: 'Staff',
-        clef: 'treble',
-        measures: [{
-          id: 'm-1',
-          items: [
-            { id: '1', type: 'note', pitch: { step: 'C', octave: 4, accidental: null }, duration: 'q' },
-          ]
-        }]
-      }],
+      staves: [
+        {
+          id: 'staff-1',
+          name: 'Staff',
+          clef: 'treble',
+          measures: [
+            {
+              id: 'm-1',
+              items: [
+                {
+                  id: '1',
+                  type: 'note',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                  duration: 'q',
+                },
+              ],
+            },
+          ],
+        },
+      ],
       createdAt: 0,
       updatedAt: 0,
     };

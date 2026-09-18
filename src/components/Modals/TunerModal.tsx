@@ -1,9 +1,13 @@
 import React, { useEffect } from 'react';
-import { Mic, MicOff, X, Activity, Volume2, AlertCircle } from 'lucide-react';
+import { Mic, MicOff, Activity, Volume2, AlertCircle } from '../ui/icons';
 import { useMicPitch } from '../../hooks/useMicPitch';
 import { centsToStatus } from '../../utils/pitchDetection';
 import { NamingConvention } from '../../types/music';
 import { formatPitchName } from '../../constants/pitches';
+import { formatCents } from '../../utils/format';
+import { ModalBase } from '../ui/ModalBase';
+import { ModalHeader } from '../ui/ModalChrome';
+import { useToast } from '../ui/toastContext';
 
 interface TunerModalProps {
   isOpen: boolean;
@@ -11,18 +15,9 @@ interface TunerModalProps {
   namingConvention: NamingConvention;
 }
 
-export const TunerModal: React.FC<TunerModalProps> = ({
-  isOpen,
-  onClose,
-  namingConvention,
-}) => {
-  const {
-    isListening,
-    error,
-    pitchResult,
-    startListening,
-    stopListening,
-  } = useMicPitch();
+export const TunerModal: React.FC<TunerModalProps> = ({ isOpen, onClose, namingConvention }) => {
+  const toast = useToast();
+  const { isListening, error, pitchResult, startListening, stopListening } = useMicPitch();
 
   // Auto-start listening on open, stop on close
   useEffect(() => {
@@ -33,163 +28,257 @@ export const TunerModal: React.FC<TunerModalProps> = ({
     }
   }, [isOpen, startListening, stopListening]);
 
+  useEffect(() => {
+    if (error) {
+      toast.error('Acceso al micrófono', error);
+    }
+  }, [error, toast]);
+
   if (!isOpen) return null;
 
   const cents = pitchResult ? pitchResult.cents : 0;
   const status = pitchResult ? centsToStatus(cents) : null;
-  const noteName = pitchResult
-    ? formatPitchName(pitchResult.pitch, namingConvention)
-    : '--';
+  const fullPitchName = pitchResult ? formatPitchName(pitchResult.pitch, namingConvention) : '--';
+  const octave = pitchResult?.pitch.octave ?? '';
+  const noteName = pitchResult ? fullPitchName.replace(String(octave), '') : '--';
 
-  // Needle position percentage from -50 to +50 mapped to 0% - 100%
+  // Needle angle: map -50 to +50 cents to -60 to +60 degrees
   const clampedCents = Math.max(-50, Math.min(50, cents));
-  const needlePercent = ((clampedCents + 50) / 100) * 100;
+  const needleAngle = (clampedCents / 50) * 60;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 select-none animate-fadeIn no-print"
+    <ModalBase
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabel="Afinador cromático en vivo"
+      maxWidth="max-w-md"
+      clipPanel
     >
-      <div className="bg-white dark:bg-[#181b25] text-slate-900 dark:text-slate-100 rounded-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl relative overflow-hidden">
-        {/* Glow Accent */}
-        <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-48 h-48 bg-[#bef264]/15 dark:bg-[#bef264]/10 rounded-full blur-3xl pointer-events-none" />
+      <ModalHeader
+        icon={<Activity className="w-4 h-4" />}
+        title="Afinador Cromático en Vivo"
+        onClose={onClose}
+        closeLabel="Cerrar afinador"
+        className="relative z-content"
+      />
 
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800/80 mb-5 relative z-10">
-          <div className="flex items-center gap-2.5 font-bold text-base text-slate-800 dark:text-white">
-            <div className="p-2 rounded-xl bg-lime-500/10 text-lime-600 dark:text-[#bef264]">
-              <Activity className="w-5 h-5" />
-            </div>
-            <span>Afinador Cromático en Vivo</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      {/* Error message banner */}
+      {error && (
+        <div className="mb-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-2.5 text-xs text-rose-600 dark:text-rose-400">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>{error}</div>
+        </div>
+      )}
+
+      {/* Chromatic Arc SVG Meter */}
+      <div className="flex flex-col items-center justify-center pt-2 relative z-content">
+        <div className="relative w-64 h-36 flex items-center justify-center">
+          <svg className="w-full h-full overflow-visible" viewBox="0 0 200 120">
+            {/* Background track */}
+            <path
+              d="M 25 105 A 75 75 0 0 1 175 105"
+              fill="none"
+              stroke="currentColor"
+              className="text-slate-200 dark:text-studio-line"
+              strokeWidth="8"
+              strokeLinecap="round"
+            />
+
+            {/* Flat zone (-50 to -10) */}
+            <path
+              d="M 25 105 A 75 75 0 0 1 65 42"
+              fill="none"
+              stroke="currentColor"
+              className="text-rose-500/40"
+              strokeWidth="8"
+            />
+            {/* Flat warning (-10 to -3) */}
+            <path
+              d="M 65 42 A 75 75 0 0 1 93 31"
+              fill="none"
+              stroke="currentColor"
+              className="text-amber-500/60"
+              strokeWidth="8"
+            />
+            {/* Sweet in-tune zone (-3 to +3) */}
+            <path
+              d="M 93 31 A 75 75 0 0 1 107 31"
+              fill="none"
+              stroke="currentColor"
+              className="text-lime-500"
+              strokeWidth="10"
+              strokeLinecap="round"
+            />
+            {/* Sharp warning (+3 to +10) */}
+            <path
+              d="M 107 31 A 75 75 0 0 1 135 42"
+              fill="none"
+              stroke="currentColor"
+              className="text-amber-500/60"
+              strokeWidth="8"
+            />
+            {/* Sharp zone (+10 to +50) */}
+            <path
+              d="M 135 42 A 75 75 0 0 1 175 105"
+              fill="none"
+              stroke="currentColor"
+              className="text-rose-500/40"
+              strokeWidth="8"
+            />
+
+            {/* Center tick */}
+            <line
+              x1="100"
+              y1="26"
+              x2="100"
+              y2="36"
+              stroke="currentColor"
+              className="text-lime-600 dark:text-lime-400"
+              strokeWidth="2"
+            />
+
+            {/* Needle */}
+            {pitchResult && (
+              <g
+                transform={`rotate(${needleAngle}, 100, 105)`}
+                className="transition-transform duration-100 ease-out"
+              >
+                <line
+                  x1="100"
+                  y1="105"
+                  x2="100"
+                  y2="30"
+                  stroke="currentColor"
+                  className={
+                    status === 'in-tune'
+                      ? 'text-lime-500 drop-shadow-[0_0_8px_rgba(132,204,22,0.8)]'
+                      : status === 'flat'
+                        ? 'text-amber-500'
+                        : 'text-rose-500'
+                  }
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <circle
+                  cx="100"
+                  cy="105"
+                  r="5"
+                  fill="currentColor"
+                  className="text-slate-800 dark:text-slate-200"
+                />
+              </g>
+            )}
+          </svg>
+
+          {/* Cents readouts at arc sides */}
+          <span className="absolute bottom-2 left-4 text-[10px] font-mono text-slate-400">
+            -50¢
+          </span>
+          <span className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] font-mono font-bold text-lime-600 dark:text-lime-400">
+            0¢
+          </span>
+          <span className="absolute bottom-2 right-4 text-[10px] font-mono text-slate-400">
+            +50¢
+          </span>
         </div>
 
-        {/* Error message */}
-        {error && (
-          <div className="mb-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-2.5 text-xs text-rose-600 dark:text-rose-400">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div>{error}</div>
-          </div>
-        )}
-
-        {/* Center Note Display */}
-        <div className="flex flex-col items-center justify-center py-4 relative z-10">
-          <div className="relative flex flex-col items-center">
-            {/* Note text */}
+        {/* Note Display in classical serif */}
+        <div className="flex flex-col items-center mt-1">
+          <div className="flex items-baseline justify-center">
             <span
-              className={`text-6xl font-black tracking-tight transition-all duration-150 ${
+              className={`text-5xl font-serif font-black tracking-tight transition-all duration-150 ${
                 status === 'in-tune'
-                  ? 'text-lime-500 dark:text-[#bef264] scale-105 drop-shadow-[0_0_15px_rgba(190,242,100,0.3)]'
+                  ? 'text-lime-500 dark:text-pastel-lime scale-105 drop-shadow-[0_0_15px_rgba(190,242,100,0.3)]'
                   : status === 'flat'
-                  ? 'text-amber-500 dark:text-[#fed7aa]'
-                  : status === 'sharp'
-                  ? 'text-rose-500'
-                  : 'text-slate-300 dark:text-slate-600'
+                    ? 'text-amber-500 dark:text-pastel-amber'
+                    : status === 'sharp'
+                      ? 'text-rose-500'
+                      : 'text-slate-300 dark:text-slate-600'
               }`}
             >
               {noteName}
             </span>
+            {octave !== '' && (
+              <span className="text-xl font-serif font-bold text-slate-400 ml-1.5">{octave}</span>
+            )}
+          </div>
 
-            {/* Frequency readout */}
-            <div className="mt-2 flex items-center gap-1.5 text-xs font-mono font-semibold text-slate-500 dark:text-slate-400">
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>{pitchResult ? `${pitchResult.frequency} Hz` : 'Esperando sonido...'}</span>
+          {/* Cents readout */}
+          <div className="mt-1 flex items-center gap-2">
+            <span
+              className={`font-mono text-xs font-bold px-2 py-0.5 rounded-md ${
+                status === 'in-tune'
+                  ? 'bg-lime-500/15 text-lime-700 dark:text-pastel-lime'
+                  : status === 'flat'
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-pastel-amber'
+                    : status === 'sharp'
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
+                      : 'text-slate-400'
+              }`}
+            >
+              {pitchResult ? formatCents(cents) : '--'}
+            </span>
+            <div className="flex items-center gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              <Volume2 className="w-3 h-3" />
+              <span>
+                {pitchResult ? `${pitchResult.frequency.toFixed(1)} Hz` : 'Esperando sonido...'}
+              </span>
             </div>
           </div>
 
-          {/* Status Badge */}
+          {/* Status badge */}
           <div className="mt-3">
             {status === 'in-tune' && (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-lime-500/15 text-lime-600 dark:text-[#bef264] border border-lime-500/30 animate-pulse">
-                ✓ ¡Perfectamente Afinado!
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-lime-500/15 text-lime-600 dark:text-pastel-lime border border-lime-500/30 animate-pulse">
+                Afinación exacta
               </span>
             )}
             {status === 'flat' && (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-[#fed7aa] border border-amber-500/30">
-                ↓ Bajo ({cents}¢) — Sube la afinación
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-pastel-amber border border-amber-500/30">
+                Grave ({formatCents(cents)}) — Tensa o sube la afinación
               </span>
             )}
             {status === 'sharp' && (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-                ↑ Alto (+{cents}¢) — Baja la afinación
+                Agudo ({formatCents(cents)}) — Destensa o baja la afinación
               </span>
             )}
             {!status && (
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-400">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-studio-elevated text-slate-500">
                 Canta o toca una nota en tu instrumento
               </span>
             )}
           </div>
         </div>
-
-        {/* Visual Cents Gauge / Needle */}
-        <div className="my-5 px-2 relative z-10">
-          <div className="flex justify-between text-[11px] font-mono text-slate-400 dark:text-slate-500 mb-1.5">
-            <span>-50¢</span>
-            <span>-25¢</span>
-            <span className="font-bold text-slate-700 dark:text-slate-200">0¢</span>
-            <span>+25¢</span>
-            <span>+50¢</span>
-          </div>
-
-          {/* Scale Bar */}
-          <div className="relative h-3 w-full bg-slate-100 dark:bg-slate-800/90 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700/80">
-            {/* Center sweet spot */}
-            <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-4 bg-lime-500/30 dark:bg-[#bef264]/30" />
-
-            {/* Needle */}
-            {pitchResult && (
-              <div
-                className={`absolute top-0 bottom-0 w-1.5 rounded-full transition-all duration-75 shadow-md ${
-                  status === 'in-tune'
-                    ? 'bg-lime-500 dark:bg-[#bef264]'
-                    : status === 'flat'
-                    ? 'bg-amber-500'
-                    : 'bg-rose-500'
-                }`}
-                style={{
-                  left: `calc(${needlePercent}% - 3px)`,
-                }}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Microphone Toggle & Quality Note */}
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between relative z-10">
-          <button
-            onClick={isListening ? stopListening : startListening}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-              isListening
-                ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                : 'bg-slate-900 hover:bg-slate-800 dark:bg-[#bef264] dark:hover:bg-[#a8df4b] text-white dark:text-slate-950 shadow-sm'
-            }`}
-          >
-            {isListening ? (
-              <>
-                <MicOff className="w-4 h-4" />
-                <span>Pausar Micrófono</span>
-              </>
-            ) : (
-              <>
-                <Mic className="w-4 h-4" />
-                <span>Activar Micrófono</span>
-              </>
-            )}
-          </button>
-
-          <span className="text-[11px] text-slate-400">
-            100% en tiempo real sin latencia
-          </span>
-        </div>
       </div>
-    </div>
+
+      {/* Microphone Toggle & Footer */}
+      <div className="mt-5 pt-3 border-t border-slate-200 dark:border-studio-border flex items-center justify-between relative z-content">
+        <button
+          type="button"
+          onClick={isListening ? stopListening : startListening}
+          aria-label={isListening ? 'Pausar micrófono' : 'Activar micrófono'}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
+            isListening
+              ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+              : 'bg-studio-accent hover:bg-amber-600 dark:hover:bg-amber-400 text-slate-950 shadow-xs'
+          }`}
+        >
+          {isListening ? (
+            <>
+              <MicOff className="w-4 h-4" />
+              <span>Pausar Micrófono</span>
+            </>
+          ) : (
+            <>
+              <Mic className="w-4 h-4" />
+              <span>Activar Micrófono</span>
+            </>
+          )}
+        </button>
+
+        <span className="text-[11px] text-slate-400">Respuesta en tiempo real</span>
+      </div>
+    </ModalBase>
   );
 };

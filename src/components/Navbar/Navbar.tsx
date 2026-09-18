@@ -5,21 +5,20 @@ import {
   Square,
   Repeat,
   Volume2,
-  FolderOpen,
+  VolumeX,
   Edit2,
   Clock,
   Menu,
-  PanelRight,
-  Upload,
-  Share2,
   Target,
-  Activity,
-  Headphones,
-} from 'lucide-react';
+  FolderOpen,
+  Wrench,
+  Minus,
+  Plus,
+  Cable,
+  Flame,
+} from '../ui/icons';
 import { Score } from '../../types/music';
-import { TEMPLATES, ScoreTemplate } from '../../constants/templates';
-import { InstrumentType } from '../../audio/synth';
-import { KEY_SIGNATURE_DATA } from '../../constants/pitches';
+import { Dropdown, DropdownItem } from '../ui/Dropdown';
 
 interface NavbarProps {
   score: Score;
@@ -33,24 +32,20 @@ interface NavbarProps {
   onToggleLoop: () => void;
   metronomeEnabled: boolean;
   onToggleMetronome: () => void;
-  instrument: InstrumentType;
-  onSetInstrument: (inst: InstrumentType) => void;
   volume: number;
   onSetVolume: (vol: number) => void;
-  onLoadTemplate: (template: ScoreTemplate) => void;
+  onToggleMute: () => void;
   onOpenMobileMenu?: () => void;
-  onToggleInspector?: () => void;
-  onOpenImport?: () => void;
-  onOpenShare?: () => void;
   isMidiConnected?: boolean;
   connectedDevices?: string[];
   isPracticeMode?: boolean;
   practiceAccuracy?: number;
   practiceStreak?: number;
   onTogglePractice?: () => void;
-  onOpenTuner?: () => void;
-  onOpenPlayAlong?: () => void;
-  isPlayAlongLoaded?: boolean;
+  fileItems: DropdownItem[];
+  toolsItems: DropdownItem[];
+  activeVoice?: 1 | 2;
+  onSelectVoice?: (voice: 1 | 2) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -65,301 +60,299 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleLoop,
   metronomeEnabled,
   onToggleMetronome,
-  instrument,
-  onSetInstrument,
   volume,
   onSetVolume,
-  onLoadTemplate,
+  onToggleMute,
   onOpenMobileMenu,
-  onToggleInspector,
-  onOpenImport,
-  onOpenShare,
   isMidiConnected,
   connectedDevices,
   isPracticeMode,
   practiceAccuracy = 100,
   practiceStreak = 0,
   onTogglePractice,
-  onOpenTuner,
-  onOpenPlayAlong,
-  isPlayAlongLoaded = false,
+  fileItems,
+  toolsItems,
+  activeVoice = 1,
+  onSelectVoice,
 }) => {
-  const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
-
-
   return (
-    <header className="px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 select-none bg-transparent">
-      {/* Title & Greeting style (inspired by "Hello, Daniel" from reference image) */}
-      <div className="flex items-center gap-3">
-        {/* Mobile Hamburger Button */}
-        {onOpenMobileMenu && (
-          <button
-            onClick={onOpenMobileMenu}
-            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-[#1f2330] transition-colors"
-            title="Abrir menú"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}
-
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={score.title}
-              onChange={(e) => onUpdateTitle(e.target.value)}
-              className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-2 py-0.5 rounded-lg outline-none transition-colors border border-transparent focus:border-[#f59e0b] tracking-tight max-w-[200px] sm:max-w-[400px]"
-              placeholder="Título de la Obra"
-              title="Haz clic para renombrar la partitura"
-            />
-            <Edit2 className="w-3.5 h-3.5 text-slate-400 opacity-60 pointer-events-none" />
-          </div>
-
-          <div className="flex items-center gap-2 px-2 text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-            <input
-              type="text"
-              value={score.composer}
-              onChange={(e) => onUpdateComposer(e.target.value)}
-              className="bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-[#1c202c] px-1 rounded outline-none transition-colors border border-transparent focus:border-[#f59e0b] text-[11px]"
-              placeholder="Compositor / Arreglista"
-              title="Haz clic para cambiar el compositor"
-            />
-            <span>•</span>
-            <span className="text-amber-600 dark:text-[#f59e0b] font-semibold">{keyLabel}</span>
-            <span>•</span>
-            <span>{score.timeSignature.beats}/{score.timeSignature.beatType}</span>
-            {isMidiConnected && (
-              <>
-                <span>•</span>
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold text-[10px] border border-emerald-300 dark:border-emerald-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  🎹 MIDI: {connectedDevices?.[0] || 'Conectado'}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Right controls: Playback & Audio Deck */}
-      <div className="flex items-center flex-wrap gap-2.5">
-        {/* Playback Transport Pill Deck */}
-        <div id="navbar-transport" className="flex items-center gap-1.5 bg-white dark:bg-[#161922] p-1.5 rounded-2xl border border-slate-200 dark:border-[#232836] shadow-xs">
-          {/* Main Play/Pause Button in Bright Amber from reference */}
-          <button
-            onClick={onTogglePlay}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl font-bold text-xs transition-all duration-150 shadow-sm ${
-              isPlaying
-                ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                : 'bg-[#fed7aa] hover:bg-[#fcd34d] text-amber-950 active:scale-95'
-            }`}
-            title="Espacio: Reproducir / Pausar"
-          >
-            {isPlaying ? (
-              <Pause className="w-3.5 h-3.5 fill-current" />
-            ) : (
-              <Play className="w-3.5 h-3.5 fill-current" />
-            )}
-            <span>{isPlaying ? 'Pausar' : 'Reproducir'}</span>
-          </button>
-
-          {/* Stop Button */}
-          <button
-            onClick={onStop}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330] transition-colors"
-            title="Detener"
-          >
-            <Square className="w-3.5 h-3.5 fill-current" />
-          </button>
-
-          {/* Loop Button */}
-          <button
-            onClick={onToggleLoop}
-            className={`p-2 rounded-xl transition-colors ${
-              isLooping
-                ? 'bg-purple-100 dark:bg-[#c4b5fd]/30 text-purple-700 dark:text-[#8b5cf6] font-bold'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330]'
-            }`}
-            title="Repetir en bucle continuo"
-          >
-            <Repeat className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Metronome Button */}
-          <button
-            onClick={onToggleMetronome}
-            className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1 font-semibold transition-colors ${
-              metronomeEnabled
-                ? 'bg-lime-200 dark:bg-[#bef264] text-lime-900 dark:text-lime-950 font-bold'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330]'
-            }`}
-            title="Metrónomo auditivo"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Metr.</span>
-          </button>
-
-          {/* Practice Mode Button */}
-          {onTogglePractice && (
+    <header className="select-none bg-transparent relative z-header">
+      {/* Row 1 — Document identity + file/tool menus: fixed height, never wraps */}
+      <div className="flex h-12 items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="flex items-center gap-2 min-w-0">
+          {onOpenMobileMenu && (
             <button
-              onClick={onTogglePractice}
-              className={`px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 font-bold transition-all ${
-                isPracticeMode
-                  ? 'bg-[#bef264] text-lime-950 shadow-xs ring-1 ring-lime-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1f2330]'
-              }`}
-              title="Modo Práctica Interactivo: La partitura espera a que toques cada nota con tu teclado"
+              onClick={onOpenMobileMenu}
+              className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-studio-hover transition-all duration-150 hover:scale-105 active:scale-90 shrink-0"
+              title="Abrir menú"
+              aria-label="Abrir menú de navegación"
             >
-              <Target className={`w-3.5 h-3.5 ${isPracticeMode ? 'animate-pulse text-lime-800' : ''}`} />
-              <span>{isPracticeMode ? `Práctica (${practiceAccuracy}%)` : 'Práctica'}</span>
-              {isPracticeMode && (practiceStreak ?? 0) > 1 && (
-                <span className="text-[10px] bg-lime-400/60 px-1 rounded-full font-mono">
-                  🔥{practiceStreak}
-                </span>
-              )}
+              <Menu className="w-5 h-5" />
             </button>
           )}
 
+          <div className="flex flex-col min-w-0">
+            <div className="group flex items-center gap-1.5 min-w-0">
+              <input
+                type="text"
+                value={score.title}
+                onChange={(e) => onUpdateTitle(e.target.value)}
+                className="text-base sm:text-xl font-black text-slate-900 dark:text-white bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-studio-elevated px-2 py-0.5 rounded-lg outline-none transition-colors border border-transparent focus:border-studio-accent tracking-tight truncate w-full max-w-[320px] min-w-0"
+                placeholder="Título de la Obra"
+                title="Renombrar la partitura"
+                aria-label="Título de la obra"
+              />
+              <Edit2 className="w-3 h-3 shrink-0 text-slate-400 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none" />
+            </div>
 
-          <div className="h-4 w-px bg-slate-200 dark:bg-[#232836] mx-1" />
-
-          {/* BPM Tempo Input */}
-          <div className="flex items-center gap-1 px-1 text-xs text-slate-500 dark:text-slate-400">
-            <span className="text-[10px] uppercase font-bold tracking-wider">BPM</span>
-            <input
-              type="number"
-              min={30}
-              max={300}
-              value={score.tempo}
-              onChange={(e) => onUpdateTempo(parseInt(e.target.value, 10) || 120)}
-              className="w-12 text-center bg-slate-100 dark:bg-[#111319] border border-slate-300 dark:border-[#2a3042] rounded-lg px-1 py-0.5 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-[#f59e0b]"
-            />
+            <div className="flex items-center gap-1.5 px-2 text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 overflow-hidden whitespace-nowrap">
+              <input
+                type="text"
+                value={score.composer}
+                onChange={(e) => onUpdateComposer(e.target.value)}
+                className="bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:bg-white dark:focus:bg-studio-elevated px-1 rounded outline-none transition-colors border border-transparent focus:border-studio-accent max-w-[200px] min-w-0 font-serif italic text-xs text-slate-600 dark:text-slate-300"
+                placeholder="Compositor"
+                title="Cambiar el compositor"
+                aria-label="Compositor de la obra"
+              />
+              {isMidiConnected && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 font-semibold text-[10px] border border-emerald-300 dark:border-emerald-800 truncate max-w-[160px]"
+                  title={`Dispositivo MIDI conectado: ${connectedDevices?.[0] || 'MIDI'}`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <Cable className="w-3 h-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{connectedDevices?.[0] || 'MIDI'}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Instrument & Volume Widget */}
-        <div className="hidden md:flex items-center gap-2 bg-white dark:bg-[#161922] px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-[#232836] shadow-xs">
-          <select
-            value={instrument}
-            onChange={(e) => onSetInstrument(e.target.value as InstrumentType)}
-            className="text-xs font-semibold bg-transparent text-slate-800 dark:text-slate-200 outline-none cursor-pointer pr-2"
-            title="Instrumento de síntesis"
-          >
-            <option value="piano" className="bg-white dark:bg-[#161922]">Piano Acústico</option>
-            <option value="marimba" className="bg-white dark:bg-[#161922]">Marimba</option>
-            <option value="strings" className="bg-white dark:bg-[#161922]">Cuerdas (Strings)</option>
-            <option value="flute" className="bg-white dark:bg-[#161922]">Flauta / Viento</option>
-          </select>
+        {/* Archivo / Herramientas: labels collapse to icon-only when the row is narrow */}
+        <div id="navbar-menus" className="flex items-center gap-2 shrink-0">
+          <Dropdown
+            label="Archivo"
+            labelClassName="hidden sm:inline"
+            icon={<FolderOpen className="w-3.5 h-3.5" />}
+            items={fileItems}
+            sectionLabel="Partitura"
+          />
+          <Dropdown
+            label="Herramientas"
+            labelClassName="hidden sm:inline"
+            icon={<Wrench className="w-3.5 h-3.5" />}
+            items={toolsItems}
+            sectionLabel="Práctica y audio"
+          />
+        </div>
+      </div>
 
-          <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200 dark:border-[#232836]">
-            <Volume2 className="w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={volume}
-              onChange={(e) => onSetVolume(parseFloat(e.target.value))}
-              className="w-14 accent-[#f59e0b] cursor-pointer h-1 bg-slate-200 dark:bg-[#2a3042] rounded-lg appearance-none"
-              title="Volumen general"
-            />
+      {/* Row 2 — Transport & audio: fixed height. The transport deck and voice selector
+          scroll horizontally when narrow; volume stays pinned on the right. */}
+      <div className="flex h-11 items-center gap-2 px-3 sm:px-6 min-w-0">
+        <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar flex items-center gap-2 py-0.5 pr-2">
+          {/* Transport deck */}
+          <div
+            id="navbar-transport"
+            className="inline-flex items-center gap-1 bg-white dark:bg-studio-card p-1 rounded-xl border border-slate-200 dark:border-studio-border shadow-xs shrink-0"
+          >
+            <button
+              onClick={onTogglePlay}
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs transition-all duration-150 shadow-sm active:scale-95 shrink-0 ${
+                isPlaying
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20 shadow-md ring-2 ring-amber-500/40'
+                  : 'bg-pastel-amber hover:bg-amber-300 text-amber-950 hover:shadow-xs'
+              }`}
+              title="Espacio: Reproducir / Pausar"
+            >
+              {isPlaying ? (
+                <Pause className="w-3.5 h-3.5 fill-current animate-pulse" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-current" />
+              )}
+              <span className="hidden md:inline">{isPlaying ? 'Pausar' : 'Reproducir'}</span>
+            </button>
+
+            <button
+              onClick={onStop}
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover transition-all duration-150 hover:scale-105 active:scale-90 shrink-0"
+              title="Detener"
+              aria-label="Detener reproducción"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+
+            <button
+              onClick={onToggleLoop}
+              className={`p-2 rounded-xl transition-all duration-150 hover:scale-105 active:scale-90 shrink-0 ${
+                isLooping
+                  ? 'bg-purple-100 dark:bg-pastel-purple/30 text-purple-700 dark:text-violet-400 font-bold shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover'
+              }`}
+              title="Repetir en bucle continuo"
+              aria-label="Repetir en bucle continuo"
+            >
+              <Repeat className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={onToggleMetronome}
+              className={`p-2 rounded-xl transition-all duration-150 hover:scale-105 active:scale-90 shrink-0 ${
+                metronomeEnabled
+                  ? 'bg-lime-200 dark:bg-pastel-lime text-lime-900 dark:text-lime-950 font-bold shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover'
+              }`}
+              title="Metrónomo auditivo"
+              aria-label="Metrónomo auditivo"
+            >
+              <Clock
+                className={`w-3.5 h-3.5 origin-top ${metronomeEnabled ? 'animate-pendulum text-lime-800' : ''}`}
+              />
+            </button>
+
+            {onTogglePractice && (
+              <button
+                onClick={onTogglePractice}
+                className={`px-2.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 font-bold transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${
+                  isPracticeMode
+                    ? 'bg-pastel-lime text-lime-950 shadow-xs ring-1 ring-lime-400'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-studio-hover'
+                }`}
+                title="Modo Práctica: la partitura espera a que toques cada nota"
+                aria-pressed={isPracticeMode}
+              >
+                <Target
+                  className={`w-3.5 h-3.5 ${isPracticeMode ? 'animate-pulse text-lime-800' : ''}`}
+                  aria-hidden="true"
+                />
+                <span className="hidden md:inline">
+                  {isPracticeMode ? `${practiceAccuracy}%` : 'Práctica'}
+                </span>
+                {isPracticeMode && (practiceStreak ?? 0) > 1 && (
+                  <span
+                    className="flex items-center gap-0.5 rounded-full bg-lime-400/60 px-1.5 py-0.5 font-mono text-[10px] text-lime-950"
+                    title={`${practiceStreak} notas seguidas acertadas`}
+                  >
+                    <Flame
+                      className="w-2.5 h-2.5 fill-amber-500/30 text-amber-700"
+                      aria-hidden="true"
+                    />
+                    {practiceStreak}
+                  </span>
+                )}
+              </button>
+            )}
+
+            <div className="h-4 w-px bg-slate-200 dark:bg-studio-border mx-0.5 shrink-0" />
+
+            {/* Stepper de tempo simetrico: [- ] [ 120 ] [ +] con pulsadores tactiles */}
+            <div className="flex items-center gap-1.5 px-1 text-xs text-slate-500 dark:text-slate-400 shrink-0">
+              <span className="text-[10px] uppercase font-bold tracking-wider hidden sm:inline">
+                BPM
+              </span>
+              <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-studio-line dark:bg-studio-surface shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onUpdateTempo(Math.max(30, score.tempo - 1))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-white hover:text-slate-900 active:scale-90 dark:text-slate-400 dark:hover:bg-studio-elevated dark:hover:text-white"
+                  title="Disminuir BPM"
+                  aria-label="Disminuir tempo"
+                >
+                  <Minus className="w-3 h-3" aria-hidden="true" />
+                </button>
+                <input
+                  type="number"
+                  min={30}
+                  max={300}
+                  value={score.tempo}
+                  onChange={(e) => onUpdateTempo(parseInt(e.target.value, 10) || 120)}
+                  className="w-11 bg-transparent py-0.5 text-center font-mono text-xs font-bold text-slate-800 outline-none select-none dark:text-slate-200"
+                  aria-label="Tempo en pulsaciones por minuto"
+                />
+                <button
+                  type="button"
+                  onClick={() => onUpdateTempo(Math.min(300, score.tempo + 1))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-white hover:text-slate-900 active:scale-90 dark:text-slate-400 dark:hover:bg-studio-elevated dark:hover:text-white"
+                  title="Aumentar BPM"
+                  aria-label="Aumentar tempo"
+                >
+                  <Plus className="w-3 h-3" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
           </div>
+
+          {/* Voice Selector: al costado del mazo de transporte */}
+          {onSelectVoice && (
+            <div
+              id="navbar-voice-selector"
+              className="flex items-center gap-1 bg-white dark:bg-studio-card p-1 rounded-xl border border-slate-200 dark:border-studio-border shadow-xs shrink-0"
+            >
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold px-1.5 uppercase tracking-wider hidden md:inline">
+                Voz:
+              </span>
+              <button
+                type="button"
+                onClick={() => onSelectVoice(1)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-150 active:scale-90 font-bold text-xs shrink-0 ${
+                  activeVoice === 1
+                    ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-500/50'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover'
+                }`}
+                title="Voz 1 (Plicas arriba por defecto) - Tecla V"
+                aria-label="Voz 1 (Plicas arriba)"
+              >
+                <span className="hidden sm:inline">Voz </span>
+                <span>1</span>
+                <span className="text-xs font-bold leading-none">↑</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectVoice(2)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all duration-150 active:scale-90 font-bold text-xs shrink-0 ${
+                  activeVoice === 2
+                    ? 'bg-amber-600 text-white shadow-xs ring-1 ring-amber-500/50'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover'
+                }`}
+                title="Voz 2 (Plicas abajo por defecto) - Tecla V"
+                aria-label="Voz 2 (Plicas abajo)"
+              >
+                <span className="hidden sm:inline">Voz </span>
+                <span>2</span>
+                <span className="text-xs font-bold leading-none">↓</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Import Score Button */}
-        {onOpenImport && (
+        {/* Master volume controls: always visible on the right, clean and compact */}
+        <div className="flex items-center gap-1.5 bg-white dark:bg-studio-card px-2 sm:px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-studio-border shadow-xs shrink-0">
           <button
-            onClick={onOpenImport}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
-            title="Importar partitura (.musicxml, .xml, .mid o .json)"
+            onClick={onToggleMute}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover transition-all duration-150 hover:scale-105 active:scale-90"
+            title={volume > 0 ? 'Silenciar' : 'Reactivar sonido'}
+            aria-label={volume > 0 ? 'Silenciar' : 'Reactivar sonido'}
           >
-            <Upload className="w-3.5 h-3.5 text-blue-500" />
-            <span>Importar</span>
-          </button>
-        )}
-
-        {/* Share Score Button */}
-        {onOpenShare && (
-          <button
-            onClick={onOpenShare}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-[#fed7aa]/35 hover:bg-[#fed7aa]/60 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 border border-amber-300/60 dark:border-amber-500/30 text-amber-950 dark:text-[#fed7aa] transition-all shadow-xs active:scale-95"
-            title="Compartir partitura mediante enlace web directo (sin servidor ni registro)"
-          >
-            <Share2 className="w-3.5 h-3.5 text-amber-600 dark:text-[#f59e0b]" />
-            <span>Compartir</span>
-          </button>
-        )}
-
-        {/* Live Tuner Button */}
-        {onOpenTuner && (
-          <button
-            onClick={onOpenTuner}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
-            title="Abrir Afinador Cromático en vivo por micrófono"
-          >
-            <Activity className="w-3.5 h-3.5 text-lime-500 dark:text-[#bef264]" />
-            <span className="hidden sm:inline">Afinador</span>
-          </button>
-        )}
-
-        {/* Play-Along Backing Track Button */}
-        {onOpenPlayAlong && (
-          <button
-            onClick={onOpenPlayAlong}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl border transition-all shadow-xs ${
-              isPlayAlongLoaded
-                ? 'bg-purple-500/15 border-purple-400 text-purple-700 dark:text-[#c4b5fd]'
-                : 'bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200'
-            }`}
-            title="Pista de audio de acompañamiento (Play-Along)"
-          >
-            <Headphones className="w-3.5 h-3.5 text-purple-500 dark:text-[#c4b5fd]" />
-            <span className="hidden sm:inline">Play-Along</span>
-            {isPlayAlongLoaded && (
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+            {volume > 0 ? (
+              <Volume2 className="w-3.5 h-3.5 text-studio-accent" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5 text-rose-500" />
             )}
           </button>
-        )}
-
-
-        {/* Templates Quick Menu Dropdown */}
-        <div className="relative group">
-          <button
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-2xl bg-white dark:bg-[#161922] hover:bg-slate-50 dark:hover:bg-[#1f2330] border border-slate-200 dark:border-[#232836] text-slate-700 dark:text-slate-200 transition-all shadow-xs"
-            title="Cargar obras de ejemplo clásicas"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-amber-500 dark:text-[#fed7aa]" />
-            <span>Ejemplos</span>
-          </button>
-          <div className="hidden group-hover:block absolute right-0 top-full mt-1.5 w-64 bg-white dark:bg-[#161922] border border-slate-200 dark:border-[#232836] rounded-2xl shadow-xl z-50 p-2 space-y-1">
-            <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Obras de Demostración
-            </div>
-            {TEMPLATES.map((tmpl) => (
-              <button
-                key={tmpl.id}
-                onClick={() => onLoadTemplate(tmpl)}
-                className="w-full text-left px-3 py-2 rounded-xl text-xs hover:bg-slate-100 dark:hover:bg-[#202534] text-slate-800 dark:text-slate-200 transition-colors flex flex-col"
-              >
-                <span className="font-bold text-slate-900 dark:text-white">{tmpl.name}</span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {tmpl.description}
-                </span>
-              </button>
-            ))}
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volume}
+            onChange={(e) => onSetVolume(parseFloat(e.target.value))}
+            style={{ '--range-progress': `${Math.round(volume * 100)}%` } as React.CSSProperties}
+            className="studio-range w-14 sm:w-20 transition-opacity hover:opacity-100 opacity-90"
+            title="Volumen general"
+            aria-label="Volumen general"
+          />
         </div>
-
-        {/* Inspector Toggle Button */}
-        {onToggleInspector && (
-          <button
-            onClick={onToggleInspector}
-            className="p-2 rounded-2xl bg-white dark:bg-[#161922] border border-slate-200 dark:border-[#232836] text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white shadow-xs transition-colors"
-            title="Mostrar / Ocultar panel inspector"
-          >
-            <PanelRight className="w-4 h-4" />
-          </button>
-        )}
       </div>
     </header>
   );

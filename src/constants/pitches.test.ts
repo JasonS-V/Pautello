@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { pitchToMidi, midiToPitch, midiToFrequency, pitchToFrequency, getItemBeats, formatPitchName } from './pitches';
+import {
+  pitchToMidi,
+  midiToPitch,
+  midiToFrequency,
+  pitchToFrequency,
+  getItemBeats,
+  formatPitchName,
+} from './pitches';
 
 describe('Pitches and Musical Math', () => {
   it('correctly converts MIDI note number back to Pitch with midiToPitch', () => {
@@ -11,7 +18,6 @@ describe('Pitches and Musical Math', () => {
   });
 
   it('correctly maps C4 (middle C) to MIDI 60 and ~261.63 Hz', () => {
-
     const midi = pitchToMidi({ step: 'C', octave: 4, accidental: null });
     expect(midi).toBe(60);
     const freq = midiToFrequency(midi);
@@ -47,6 +53,13 @@ describe('Pitches and Musical Math', () => {
     expect(getItemBeats('h', true)).toBe(3.0);
     expect(getItemBeats('q', true)).toBe(1.5);
     expect(getItemBeats('8', true)).toBe(0.75);
+
+    // Tuplets (3:2 ratio = 2/3 of normal duration)
+    expect(getItemBeats('q', false, { actual: 3, normal: 2 })).toBeCloseTo(2 / 3, 5);
+    expect(getItemBeats('8', false, { actual: 3, normal: 2 })).toBeCloseTo(1 / 3, 5);
+    expect(getItemBeats('16', false, { actual: 3, normal: 2 })).toBeCloseTo(1 / 6, 5);
+    // 3 triplet eighth notes = 1 beat
+    expect(3 * getItemBeats('8', false, { actual: 3, normal: 2 })).toBeCloseTo(1.0, 5);
   });
 
   it('formats pitch names in Latin (Do-Re-Mi) and English (C-D-E)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PracticeSession } from './practiceEngine';
+import { OnsetDetector, PracticeSession } from './practiceEngine';
 import { Score } from '../types/music';
 
 describe('Interactive Practice Engine', () => {
@@ -21,14 +21,29 @@ describe('Interactive Practice Engine', () => {
           {
             id: 'm1',
             items: [
-              { id: 'n1', type: 'note', duration: 'q', pitch: { step: 'C', octave: 4, accidental: null } }, // MIDI 60
-              { id: 'n2', type: 'note', duration: 'q', pitch: { step: 'D', octave: 4, accidental: null } }, // MIDI 62
+              {
+                id: 'n1',
+                type: 'note',
+                duration: 'q',
+                pitch: { step: 'C', octave: 4, accidental: null },
+              }, // MIDI 60
+              {
+                id: 'n2',
+                type: 'note',
+                duration: 'q',
+                pitch: { step: 'D', octave: 4, accidental: null },
+              }, // MIDI 62
             ],
           },
           {
             id: 'm2',
             items: [
-              { id: 'n3', type: 'note', duration: 'h', pitch: { step: 'E', octave: 4, accidental: null } }, // MIDI 64
+              {
+                id: 'n3',
+                type: 'note',
+                duration: 'h',
+                pitch: { step: 'E', octave: 4, accidental: null },
+              }, // MIDI 64
             ],
           },
         ],
@@ -84,5 +99,65 @@ describe('Interactive Practice Engine', () => {
     expect(res3.isCompleted).toBe(true);
     expect(session.isCompleted).toBe(true);
     expect(session.accuracy).toBe(100);
+  });
+});
+
+describe('OnsetDetector: contar ataques y no fotogramas', () => {
+  it('cuenta una nota sostenida una sola vez', () => {
+    const detector = new OnsetDetector();
+
+    expect(detector.update(60, 0)).toBe(true);
+    expect(detector.update(60, 16)).toBe(false);
+    expect(detector.update(60, 320)).toBe(false);
+    expect(detector.update(60, 2000)).toBe(false);
+  });
+
+  it('cuenta un cambio de altura mientras la nota sigue sonando', () => {
+    const detector = new OnsetDetector();
+    detector.update(60, 0);
+
+    expect(detector.update(62, 50)).toBe(true);
+    expect(detector.update(62, 100)).toBe(false);
+  });
+
+  it('vuelve a contar la misma nota tras un silencio real', () => {
+    const detector = new OnsetDetector(120);
+    detector.update(60, 0);
+
+    expect(detector.update(null, 200)).toBe(false);
+    expect(detector.update(60, 340)).toBe(true);
+  });
+
+  it('no cuenta de nuevo si el silencio es un hueco del análisis', () => {
+    const detector = new OnsetDetector(120);
+    detector.update(60, 0);
+
+    // 80 ms de silencio: es un hipo del analizador, la nota seguía sonando.
+    expect(detector.update(null, 100)).toBe(false);
+    expect(detector.update(60, 180)).toBe(false);
+  });
+
+  it('no dispara nada mientras no haya nota', () => {
+    const detector = new OnsetDetector();
+
+    expect(detector.update(null, 0)).toBe(false);
+    expect(detector.update(null, 5000)).toBe(false);
+  });
+
+  it('cuenta un ataque tras un silencio corto si la altura cambió', () => {
+    const detector = new OnsetDetector(120);
+    detector.update(60, 0);
+    detector.update(null, 100);
+
+    expect(detector.update(64, 150)).toBe(true);
+  });
+
+  it('reinicia el estado para que la próxima nota vuelva a contar', () => {
+    const detector = new OnsetDetector();
+    detector.update(60, 0);
+
+    detector.reset();
+
+    expect(detector.update(60, 10)).toBe(true);
   });
 });

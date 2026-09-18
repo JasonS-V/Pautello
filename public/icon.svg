@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pautello">
+  <!-- Misma composicion que favicon.svg, escalada a 512 para el manifiesto. -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#grad)" />
+  <g fill="#ffffff" transform="translate(92.16, 81.92) scale(5.12)">
+    <circle cx="16" cy="50" r="9" />
+    <circle cx="48" cy="42" r="9" />
+    <rect x="23" y="10" width="4" height="40" />
+    <rect x="55" y="2" width="4" height="40" />
+    <polygon points="23,10 59,2 59,10 23,18" />
+  </g>
+</svg>

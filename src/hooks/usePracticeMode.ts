@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Score, Pitch } from '../types/music';
 import { pitchToMidi } from '../constants/pitches';
 import { audioEngine } from '../audio/synth';
+import { useTimeout } from './useTimeout';
 
 export interface PracticeStats {
   correctHits: number;
@@ -24,6 +25,9 @@ export function usePracticeMode({ score, onNoteHit }: UsePracticeModeOptions) {
   const [streak, setStreak] = useState<number>(0);
   const [lastHitResult, setLastHitResult] = useState<'correct' | 'incorrect' | null>(null);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  // El aviso de acierto/fallo es un destello: si llega otra pulsación antes de
+  // que se apague, el temporizador anterior no debe cortar el nuevo aviso.
+  const hitResultFlash = useTimeout();
 
   // Flatten all playable notes in the score with their positions
   const playableNotes = useMemo(() => {
@@ -125,16 +129,16 @@ export function usePracticeMode({ score, onNoteHit }: UsePracticeModeOptions) {
           setIsCompleted(true);
         }
 
-        setTimeout(() => setLastHitResult(null), 350);
+        hitResultFlash.schedule(() => setLastHitResult(null), 350);
         return true;
       } else {
         setStreak(0);
         setLastHitResult('incorrect');
-        setTimeout(() => setLastHitResult(null), 400);
+        hitResultFlash.schedule(() => setLastHitResult(null), 400);
         return false;
       }
     },
-    [isActive, targetNote, currentNoteIndex, playableNotes, onNoteHit]
+    [isActive, targetNote, currentNoteIndex, playableNotes, onNoteHit, hitResultFlash]
   );
 
   const accuracy = totalAttempts > 0 ? Math.round((correctHits / totalAttempts) * 100) : 100;

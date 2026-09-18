@@ -1,14 +1,45 @@
 import React, { useState } from 'react';
 import {
-  X,
   Sliders,
   Volume2,
   VolumeX,
   Clock,
-  Music,
+  Music2,
+  Piano,
+  Wind,
+  AudioWaveform,
+  Layers,
   Sparkles,
-} from 'lucide-react';
-import { InstrumentType, audioEngine } from '../../audio/synth';
+  ChevronUp,
+  ChevronDown,
+} from '../ui/icons';
+import { InstrumentType, audioEngine, StaffChannelState } from '../../audio/synth';
+import { Score } from '../../types/music';
+import { ModalBase } from '../ui/ModalBase';
+import { ModalHeader, ModalFooter } from '../ui/ModalChrome';
+import { modalButton } from '../ui/modalButton';
+import { useToast } from '../ui/toastContext';
+
+/**
+ * Sondea si el navegador sigue bloqueando el audio (contexto suspendido). Se
+ * crea un AudioContext desechable porque el motor de audio no expone el estado
+ * del suyo; se cierra de inmediato para no dejar recursos colgando.
+ */
+function isAudioBlocked(): boolean {
+  if (typeof window === 'undefined') return true;
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return true;
+  try {
+    const probe = new AudioCtx();
+    const blocked = probe.state === 'suspended';
+    void probe.close();
+    return blocked;
+  } catch {
+    return true;
+  }
+}
 
 interface MixerModalProps {
   isOpen: boolean;
@@ -21,6 +52,11 @@ interface MixerModalProps {
   onSetTempo: (tempo: number) => void;
   metronomeEnabled: boolean;
   onToggleMetronome: () => void;
+  chordCompingEnabled?: boolean;
+  onToggleChordComping?: () => void;
+  chordCompingVolume?: number;
+  onSetChordCompingVolume?: (vol: number) => void;
+  score?: Score;
 }
 
 export const MixerModal: React.FC<MixerModalProps> = ({
@@ -34,35 +70,50 @@ export const MixerModal: React.FC<MixerModalProps> = ({
   onSetTempo,
   metronomeEnabled,
   onToggleMetronome,
+  chordCompingEnabled = false,
+  onToggleChordComping,
+  chordCompingVolume = 0.65,
+  onSetChordCompingVolume,
+  score,
 }) => {
+  const toast = useToast();
   const [previousVolume, setPreviousVolume] = useState<number>(volume || 0.7);
+  const [channels, setChannels] = useState<Record<number, StaffChannelState>>(() =>
+    audioEngine.getStaffChannels()
+  );
+  const [activeTab, setActiveTab] = useState<'tracks' | 'master'>('tracks');
 
   if (!isOpen) return null;
 
-  const instruments: { id: InstrumentType; name: string; desc: string; icon: string }[] = [
+  const instruments: {
+    id: InstrumentType;
+    name: string;
+    desc: string;
+    icon: React.ReactNode;
+  }[] = [
     {
       id: 'piano',
       name: 'Piano Acústico',
-      desc: 'Sonido armónico rico con respuesta percusiva natural',
-      icon: '🎹',
+      desc: 'Muestras de piano de cola Steinway con resonancia natural',
+      icon: <Piano className="w-4 h-4" />,
     },
     {
-      id: 'marimba',
-      name: 'Marimba Orquestal',
-      desc: 'Ataque nítido de madera con resonancia cálida',
-      icon: '🪵',
+      id: 'melody',
+      name: 'Melodía Lírica',
+      desc: 'Timbre expresivo ideal para voces y vientos solistas',
+      icon: <Wind className="w-4 h-4" />,
     },
     {
-      id: 'strings',
-      name: 'Cuerdas (Strings)',
-      desc: 'Ensemble orquestal suave con sustain expresivo',
-      icon: '🎻',
+      id: 'bass',
+      name: 'Bajo Profundo',
+      desc: 'Contrabajo y bajo acústico con cuerpo y pegada definida',
+      icon: <AudioWaveform className="w-4 h-4" />,
     },
     {
-      id: 'flute',
-      name: 'Flauta / Viento',
-      desc: 'Timbre puro y dulce ideal para melodías líricas',
-      icon: '🪈',
+      id: 'harmony',
+      name: 'Armonía Orquestal',
+      desc: 'Ensemble de cuerdas suaves y colchón armónico envolvente',
+      icon: <Layers className="w-4 h-4" />,
     },
   ];
 
@@ -75,7 +126,13 @@ export const MixerModal: React.FC<MixerModalProps> = ({
   ];
 
   const handleTestSound = () => {
-    // Play an ascending arpeggio C4 - E4 - G4 - C5
+    if (isAudioBlocked()) {
+      toast.info(
+        'Audio desbloqueado',
+        'Pulsa reproducir para habilitar el sonido en este navegador.'
+      );
+    }
+
     const notes = [60, 64, 67, 72];
     notes.forEach((m, idx) => {
       setTimeout(() => {
@@ -93,210 +150,474 @@ export const MixerModal: React.FC<MixerModalProps> = ({
     }
   };
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 select-none animate-fadeIn no-print"
-    >
-      <div className="bg-white dark:bg-[#161922] text-slate-900 dark:text-slate-100 rounded-2xl max-w-lg w-full p-6 border border-slate-200 dark:border-[#232836] shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#232836] mb-5">
-          <div className="flex items-center gap-2.5 font-bold text-base">
-            <div className="w-8 h-8 rounded-xl bg-[#c4b5fd]/30 flex items-center justify-center text-[#8b5cf6]">
-              <Sliders className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="block leading-none">Sintetizador & Mezclador</span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                Web Audio API 44.1 kHz Polifónico
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#1f2330] transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+  const updateChannel = (staffIdx: number, updates: Partial<StaffChannelState>) => {
+    audioEngine.setStaffChannel(staffIdx, updates);
+    setChannels(audioEngine.getStaffChannels());
+  };
 
-        <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-1">
-          {/* Section 1: Instruments Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                Timbre del Instrumento
-              </label>
+  const handleResetMixer = () => {
+    audioEngine.resetStaffChannels();
+    setChannels(audioEngine.getStaffChannels());
+    toast.info('Mezclador reiniciado', 'Se restablecieron volúmenes, mute, solo y panoramas.');
+  };
+
+  const staves = score?.staves || [];
+  const anySoloActive = Object.values(channels).some((c) => c.solo);
+
+  return (
+    <ModalBase
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabel="Sintetizador y mezclador multicanal"
+      maxWidth="max-w-2xl"
+    >
+      <ModalHeader
+        icon={<Sliders className="w-4 h-4" />}
+        title="Mezclador & Sintetizador"
+        subtitle="Web Audio 44.1 kHz • Control Multipista (Mute, Solo, Pan)"
+        onClose={onClose}
+        closeLabel="Cerrar mezclador"
+        actions={
+          <div
+            role="tablist"
+            aria-label="Sección del mezclador"
+            className="flex bg-slate-100 dark:bg-studio-elevated rounded-lg p-0.5 text-xs font-semibold"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'tracks'}
+              onClick={() => setActiveTab('tracks')}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                activeTab === 'tracks'
+                  ? 'bg-white dark:bg-studio-card text-studio-accent shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Pistas ({staves.length || 1})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'master'}
+              onClick={() => setActiveTab('master')}
+              className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                activeTab === 'master'
+                  ? 'bg-white dark:bg-studio-card text-studio-accent shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Maestro & Tempo
+            </button>
+          </div>
+        }
+      />
+
+      <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+        {/* TAB 1: PISTAS / MULTITRACK MIXER */}
+        {activeTab === 'tracks' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Tiras de Canal por Instrumento
+              </span>
               <button
-                onClick={handleTestSound}
-                className="text-[11px] font-bold text-[#f59e0b] hover:text-[#d97706] flex items-center gap-1 transition-colors"
-                title="Reproducir arpegio de prueba"
+                type="button"
+                onClick={handleResetMixer}
+                className="text-[11px] text-slate-500 hover:text-studio-accent transition-colors font-medium cursor-pointer"
               >
-                <Sparkles className="w-3 h-3" />
-                <span>Probar Sonido</span>
+                Restablecer Mezclador
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {instruments.map((inst) => (
-                <div
-                  key={inst.id}
-                  onClick={() => {
-                    onSetInstrument(inst.id);
-                    audioEngine.instrument = inst.id;
-                    audioEngine.playMidi(60, 0.4);
-                  }}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all duration-150 flex items-start gap-2.5 ${
-                    instrument === inst.id
-                      ? 'bg-purple-50 dark:bg-[#201d32] border-[#8b5cf6] ring-1 ring-[#8b5cf6]'
-                      : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#1a1d29] dark:hover:bg-[#202534] border-slate-200 dark:border-[#282d40]'
-                  }`}
+            {staves.length === 0 ? (
+              <p className="text-xs text-slate-500 py-4 text-center">
+                No hay pentagramas configurados.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5">
+                {staves.map((staff, sIdx) => {
+                  const ch = channels[sIdx] || { volume: 1, pan: 0, mute: false, solo: false };
+                  const isMutedBySolo = anySoloActive && !ch.solo;
+                  const isSilenced = ch.mute || isMutedBySolo;
+                  const staffName = staff.name || `Pista ${sIdx + 1}`;
+
+                  return (
+                    <div
+                      key={staff.id || `staff-${sIdx}`}
+                      className={`p-3 rounded-xl border transition-all ${
+                        isSilenced
+                          ? 'bg-slate-100/70 dark:bg-studio-elevated/40 border-slate-200 dark:border-studio-lineSoft opacity-60'
+                          : 'bg-slate-50 dark:bg-studio-elevated border-slate-200 dark:border-studio-lineSoft shadow-xs'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono uppercase bg-slate-200 dark:bg-studio-raised px-1.5 py-0.5 rounded font-bold text-slate-600 dark:text-slate-300">
+                            {staff.clef || 'sol'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            {staffName}
+                          </span>
+                        </div>
+
+                        {/* Mute and Solo buttons */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateChannel(sIdx, { mute: !ch.mute })}
+                            className={`w-7 h-6 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                              ch.mute
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'bg-slate-200 dark:bg-studio-raised text-slate-600 dark:text-slate-300 hover:bg-slate-300'
+                            }`}
+                            title={ch.mute ? 'Desmutear pista' : 'Silenciar pista (Mute)'}
+                          >
+                            M
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateChannel(sIdx, { solo: !ch.solo })}
+                            className={`w-7 h-6 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                              ch.solo
+                                ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-400'
+                                : 'bg-slate-200 dark:bg-studio-raised text-slate-600 dark:text-slate-300 hover:bg-slate-300'
+                            }`}
+                            title={ch.solo ? 'Desactivar Solo' : 'Pista en Solo'}
+                          >
+                            S
+                          </button>
+
+                          {/* Instrument selector per staff */}
+                          <select
+                            value={ch.instrument || instrument}
+                            onChange={(e) =>
+                              updateChannel(sIdx, { instrument: e.target.value as InstrumentType })
+                            }
+                            className="text-[11px] bg-white dark:bg-studio-surface border border-slate-200 dark:border-studio-line rounded-lg px-2 py-1 text-slate-800 dark:text-slate-200 cursor-pointer outline-none focus:border-studio-accent"
+                          >
+                            {instruments.map((opt) => (
+                              <option key={opt.id} value={opt.id}>
+                                {opt.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Controls: Volume and Stereo Pan */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 dark:border-studio-lineSoft/60">
+                        {/* Volume Fader */}
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <span className="text-slate-500 font-medium">Volumen</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                              {Math.round(ch.volume * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={ch.volume}
+                            onChange={(e) =>
+                              updateChannel(sIdx, { volume: parseFloat(e.target.value) })
+                            }
+                            className="w-full accent-studio-accent cursor-pointer h-1.5 bg-slate-200 dark:bg-studio-raised rounded-lg appearance-none"
+                          />
+                        </div>
+
+                        {/* Stereo Pan */}
+                        <div>
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <span className="text-slate-500 font-medium">Panorama (Pan)</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                              {ch.pan === 0
+                                ? 'C'
+                                : ch.pan < 0
+                                  ? `L ${Math.round(Math.abs(ch.pan) * 100)}%`
+                                  : `R ${Math.round(ch.pan * 100)}%`}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={-1}
+                            max={1}
+                            step={0.05}
+                            value={ch.pan}
+                            onChange={(e) =>
+                              updateChannel(sIdx, { pan: parseFloat(e.target.value) })
+                            }
+                            className="w-full accent-studio-accent cursor-pointer h-1.5 bg-slate-200 dark:bg-studio-raised rounded-lg appearance-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: MAESTRO & TEMPO */}
+        {activeTab === 'master' && (
+          <div className="space-y-4">
+            {/* Master Instrument Timbre Selection */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Timbre Maestro Predeterminado
+                </span>
+                <button
+                  type="button"
+                  onClick={handleTestSound}
+                  className="text-[11px] font-bold text-studio-accent hover:text-amber-600 flex items-center gap-1 cursor-pointer"
+                  title="Reproducir arpegio de prueba"
                 >
-                  <span className="text-xl leading-none">{inst.icon}</span>
+                  <Sparkles className="w-3 h-3" />
+                  <span>Probar Sonido</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {instruments.map((inst) => (
+                  <button
+                    type="button"
+                    key={inst.id}
+                    onClick={() => {
+                      onSetInstrument(inst.id);
+                      audioEngine.instrument = inst.id;
+                      audioEngine.playMidi(60, 0.4);
+                    }}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all duration-150 flex items-start gap-2.5 text-left hover:-translate-y-0.5 active:scale-[0.98] ${
+                      instrument === inst.id
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-studio-accent ring-1 ring-studio-accent/50 shadow-xs'
+                        : 'bg-slate-50 hover:bg-slate-100 dark:bg-studio-elevated dark:hover:bg-studio-deep border-slate-200 dark:border-studio-lineSoft'
+                    }`}
+                  >
+                    <span className="text-xl leading-none">{inst.icon}</span>
+                    <div>
+                      <span className="font-bold text-xs block text-slate-900 dark:text-white">
+                        {inst.name}
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight block mt-0.5">
+                        {inst.desc}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Master Volume */}
+            <div className="bg-slate-50 dark:bg-studio-elevated p-4 rounded-xl border border-slate-200 dark:border-studio-lineSoft">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleToggleMute}
+                    className="p-1 rounded text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white active:scale-90 transition-all cursor-pointer"
+                    title={volume > 0 ? 'Silenciar maestro' : 'Reactivar sonido'}
+                  >
+                    {volume > 0 ? (
+                      <Volume2 className="w-4 h-4 text-studio-accent" />
+                    ) : (
+                      <VolumeX className="w-4 h-4 text-red-500" />
+                    )}
+                  </button>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Volumen Maestro General
+                  </span>
+                </div>
+                <span className="text-xs font-mono font-bold text-slate-900 dark:text-white">
+                  {Math.round(volume * 100)}%
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={volume}
+                onChange={(e) => onSetVolume(parseFloat(e.target.value))}
+                className="w-full accent-studio-accent cursor-pointer h-1.5 bg-slate-200 dark:bg-studio-raised rounded-lg appearance-none"
+              />
+            </div>
+
+            {/* Tempo & BPM Presets */}
+            <div className="bg-slate-50 dark:bg-studio-elevated p-4 rounded-xl border border-slate-200 dark:border-studio-lineSoft">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-studio-accent" />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Velocidad / Tempo
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 font-mono text-xs font-bold">
+                  <div className="flex items-center bg-white dark:bg-studio-surface border border-slate-300 dark:border-studio-line rounded-lg overflow-hidden focus-within:border-studio-accent focus-within:ring-1 focus-within:ring-studio-accent/30 transition-all">
+                    <input
+                      type="number"
+                      min={30}
+                      max={300}
+                      value={tempo}
+                      onChange={(e) => onSetTempo(parseInt(e.target.value, 10) || 120)}
+                      className="w-11 text-center bg-transparent py-0.5 text-xs font-bold outline-none select-none text-slate-800 dark:text-slate-200"
+                    />
+                    <div className="flex flex-col border-l border-slate-200 dark:border-studio-line shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onSetTempo(Math.min(300, tempo + 1))}
+                        className="px-1 py-0.5 hover:bg-slate-100 dark:hover:bg-studio-deep text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        title="Aumentar tempo"
+                      >
+                        <ChevronUp className="w-2.5 h-2.5 stroke-[2.5]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSetTempo(Math.max(30, tempo - 1))}
+                        className="px-1 py-0.5 border-t border-slate-200 dark:border-studio-line hover:bg-slate-100 dark:hover:bg-studio-deep text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        title="Disminuir tempo"
+                      >
+                        <ChevronDown className="w-2.5 h-2.5 stroke-[2.5]" />
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-slate-500 font-sans font-normal text-[11px]">BPM</span>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={30}
+                max={300}
+                step={1}
+                value={tempo}
+                onChange={(e) => onSetTempo(parseInt(e.target.value, 10) || 120)}
+                className="w-full accent-studio-accent cursor-pointer h-1.5 bg-slate-200 dark:bg-studio-raised rounded-lg appearance-none mb-3"
+              />
+
+              <div className="flex flex-wrap gap-1.5">
+                {tempoPresets.map((p) => (
+                  <button
+                    key={p.label}
+                    onClick={() => onSetTempo(p.bpm)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
+                      tempo === p.bpm
+                        ? 'bg-studio-accent text-slate-950 shadow-xs'
+                        : 'bg-white hover:bg-slate-200 dark:bg-studio-card dark:hover:bg-studio-raised text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-studio-lineSoft'
+                    }`}
+                  >
+                    {p.label} ({p.bpm})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Metronome */}
+            <div className="bg-slate-50 dark:bg-studio-elevated p-4 rounded-xl border border-slate-200 dark:border-studio-lineSoft flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-studio-accent/10 text-amber-700 dark:text-studio-accent">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                    Metrónomo Rítmico
+                  </span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Acentúa el primer tiempo de cada compás durante la reproducción
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={onToggleMetronome}
+                aria-pressed={metronomeEnabled}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                  metronomeEnabled
+                    ? 'bg-studio-accent text-slate-950 shadow-xs ring-2 ring-studio-accent/40 hover:bg-amber-400'
+                    : 'bg-slate-200 dark:bg-studio-lineSoft text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-studio-raised'
+                }`}
+              >
+                {metronomeEnabled ? 'Activado' : 'Desactivado'}
+              </button>
+            </div>
+
+            {/* Chord Comping */}
+            <div className="bg-slate-50 dark:bg-studio-elevated p-4 rounded-xl border border-slate-200 dark:border-studio-lineSoft space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Piano className="w-4 h-4" />
+                  </div>
                   <div>
-                    <span className="font-bold text-xs block text-slate-900 dark:text-white">
-                      {inst.name}
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
+                      Acompañamiento de Cifrado (Chord Comping)
                     </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight block mt-0.5">
-                      {inst.desc}
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Realiza automáticamente los acordes armónicos (ej. Cmaj7, Sol7, Lam) en la
+                      reproducción
                     </span>
                   </div>
                 </div>
-              ))}
+
+                {onToggleChordComping && (
+                  <button
+                    onClick={onToggleChordComping}
+                    aria-pressed={chordCompingEnabled}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                      chordCompingEnabled
+                        ? 'bg-amber-500 text-slate-950 shadow-xs ring-2 ring-amber-400/40 hover:bg-amber-400'
+                        : 'bg-slate-200 dark:bg-studio-lineSoft text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-studio-raised'
+                    }`}
+                  >
+                    {chordCompingEnabled ? 'Activado' : 'Desactivado'}
+                  </button>
+                )}
+              </div>
+
+              {chordCompingEnabled && onSetChordCompingVolume && (
+                <div className="pt-2 border-t border-slate-200/60 dark:border-studio-lineSoft/60 flex items-center gap-3">
+                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 shrink-0">
+                    Volumen Acordes:
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={chordCompingVolume}
+                    onChange={(e) => onSetChordCompingVolume(parseFloat(e.target.value) || 0.65)}
+                    className="w-full accent-amber-500 cursor-pointer h-1.5 bg-slate-200 dark:bg-studio-raised rounded-lg appearance-none"
+                  />
+                  <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0">
+                    {Math.round(chordCompingVolume * 100)}%
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Section 2: Master Volume */}
-          <div className="bg-slate-50 dark:bg-[#1a1d29] p-4 rounded-xl border border-slate-200 dark:border-[#282d40]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleMute}
-                  className="p-1 rounded text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
-                  title={volume > 0 ? 'Silenciar' : 'Reactivar sonido'}
-                >
-                  {volume > 0 ? (
-                    <Volume2 className="w-4 h-4 text-[#f59e0b]" />
-                  ) : (
-                    <VolumeX className="w-4 h-4 text-red-500" />
-                  )}
-                </button>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Volumen Maestro
-                </span>
-              </div>
-              <span className="text-xs font-mono font-bold text-slate-900 dark:text-white">
-                {Math.round(volume * 100)}%
-              </span>
-            </div>
-
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(e) => onSetVolume(parseFloat(e.target.value))}
-              className="w-full accent-[#f59e0b] cursor-pointer h-1.5 bg-slate-200 dark:bg-[#2c3246] rounded-lg appearance-none"
-            />
-          </div>
-
-          {/* Section 3: Tempo & BPM Presets */}
-          <div className="bg-slate-50 dark:bg-[#1a1d29] p-4 rounded-xl border border-slate-200 dark:border-[#282d40]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#bef264] dark:text-[#bef264]" />
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Velocidad / Tempo
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 font-mono text-xs font-bold">
-                <input
-                  type="number"
-                  min={30}
-                  max={300}
-                  value={tempo}
-                  onChange={(e) => onSetTempo(parseInt(e.target.value, 10) || 120)}
-                  className="w-14 text-center bg-white dark:bg-[#111319] border border-slate-300 dark:border-[#2a3042] rounded-lg px-1 py-0.5 text-xs font-bold outline-none focus:border-[#f59e0b]"
-                />
-                <span className="text-slate-500 font-sans font-normal text-[11px]">BPM</span>
-              </div>
-            </div>
-
-            <input
-              type="range"
-              min={30}
-              max={300}
-              step={1}
-              value={tempo}
-              onChange={(e) => onSetTempo(parseInt(e.target.value, 10) || 120)}
-              className="w-full accent-[#bef264] cursor-pointer h-1.5 bg-slate-200 dark:bg-[#2c3246] rounded-lg appearance-none mb-3"
-            />
-
-            {/* Presets */}
-            <div className="flex flex-wrap gap-1.5">
-              {tempoPresets.map((p) => (
-                <button
-                  key={p.label}
-                  onClick={() => onSetTempo(p.bpm)}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
-                    tempo === p.bpm
-                      ? 'bg-[#bef264] text-lime-950 shadow-xs'
-                      : 'bg-white hover:bg-slate-200 dark:bg-[#161922] dark:hover:bg-[#242938] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-[#282d40]'
-                  }`}
-                >
-                  {p.label} ({p.bpm})
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Section 4: Metronome */}
-          <div className="bg-slate-50 dark:bg-[#1a1d29] p-4 rounded-xl border border-slate-200 dark:border-[#282d40] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl">⏱️</span>
-              <div>
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block leading-tight">
-                  Metrónomo Rítmico
-                </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Acentúa el primer tiempo de cada compás durante la reproducción
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={onToggleMetronome}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                metronomeEnabled
-                  ? 'bg-[#bef264] text-lime-950 shadow-xs ring-2 ring-lime-400/40'
-                  : 'bg-slate-200 dark:bg-[#282d40] text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              {metronomeEnabled ? 'Activado' : 'Desactivado'}
-            </button>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-5 pt-3 border-t border-slate-200 dark:border-[#232836] flex items-center justify-between">
-          <button
-            onClick={handleTestSound}
-            className="flex items-center gap-1 text-xs font-bold text-[#f59e0b] hover:text-[#d97706]"
-          >
-            <Music className="w-3.5 h-3.5" />
-            <span>Escuchar escala de prueba</span>
-          </button>
-
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 text-xs font-bold transition-colors shadow-xs"
-          >
-            Listo
-          </button>
-        </div>
+        )}
       </div>
-    </div>
+
+      <ModalFooter
+        className="mt-4"
+        hint={
+          <button
+            type="button"
+            onClick={handleTestSound}
+            className="flex items-center gap-1 text-xs font-bold text-studio-accent hover:text-amber-600 active:scale-95 transition-all cursor-pointer"
+          >
+            <Music2 className="w-3.5 h-3.5" />
+            <span>Escuchar prueba de audio</span>
+          </button>
+        }
+      >
+        <button type="button" onClick={onClose} className={modalButton.secondary}>
+          Listo
+        </button>
+      </ModalFooter>
+    </ModalBase>
   );
 };

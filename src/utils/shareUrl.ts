@@ -37,8 +37,8 @@ export async function decompressScoreFromHash(hash: string): Promise<Score | nul
     const cleanHash = hash.startsWith('#share=')
       ? hash.slice(7)
       : hash.startsWith('#')
-      ? hash.slice(1)
-      : hash;
+        ? hash.slice(1)
+        : hash;
 
     const decodedBinary = atob(decodeURIComponent(cleanHash));
 

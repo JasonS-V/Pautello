@@ -1,47 +1,137 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { useScore } from './hooks/useScore';
 import { useAudio } from './hooks/useAudio';
 import { useKeyboard } from './hooks/useKeyboard';
-import { Sidebar, SidebarTab } from './components/Sidebar/Sidebar';
+import { Sidebar } from './components/Sidebar/Sidebar';
 import { Navbar } from './components/Navbar/Navbar';
-import { Toolbar } from './components/Toolbar/Toolbar';
-import { StatCard } from './components/Cards/StatCard';
+import { StatusBar } from './components/Cards/StatusBar';
+import {
+  FilePlus,
+  BookOpen,
+  Upload,
+  Download,
+  Share2,
+  Mic,
+  Headphones,
+  Target,
+  Sliders,
+  HelpCircle,
+  GraduationCap,
+} from './components/ui/icons';
+import { DropdownItem } from './components/ui/Dropdown';
 import { ScoreInspector } from './components/Inspector/ScoreInspector';
 import { ScoreView } from './components/ScoreView/ScoreView';
+import { Toolbar } from './components/Toolbar/Toolbar';
 import { VirtualPiano } from './components/PianoRoll/VirtualPiano';
-import { ExportModal } from './components/Modals/ExportModal';
-import { ShortcutsModal } from './components/Modals/ShortcutsModal';
-import { DonateModal } from './components/Modals/DonateModal';
-import { TemplatesModal } from './components/Modals/TemplatesModal';
-import { MixerModal } from './components/Modals/MixerModal';
-import { ImportModal } from './components/Modals/ImportModal';
-import { ShareModal } from './components/Modals/ShareModal';
-import { PracticeResultModal } from './components/Modals/PracticeResultModal';
-import { TunerModal } from './components/Modals/TunerModal';
-import { PlayAlongModal } from './components/Modals/PlayAlongModal';
+/**
+ * Modales de diálogo cargados por demanda. Entre los diez suman miles de líneas
+ * y ninguno hace falta para pintar el editor, así que con `lazy` cada uno viaja
+ * en su propio chunk y solo se descarga al abrirse: el render los monta bajo un
+ * `Suspense` únicamente cuando su condición se cumple.
+ */
+const ImportModal = lazy(() =>
+  import('./components/Modals/ImportModal').then((module) => ({ default: module.ImportModal }))
+);
+
+const ExportModal = lazy(() =>
+  import('./components/Modals/ExportModal').then((module) => ({ default: module.ExportModal }))
+);
+
+const TemplatesModal = lazy(() =>
+  import('./components/Modals/TemplatesModal').then((module) => ({
+    default: module.TemplatesModal,
+  }))
+);
+
+const MixerModal = lazy(() =>
+  import('./components/Modals/MixerModal').then((module) => ({ default: module.MixerModal }))
+);
+
+const ShortcutsModal = lazy(() =>
+  import('./components/Modals/ShortcutsModal').then((module) => ({
+    default: module.ShortcutsModal,
+  }))
+);
+
+const DonateModal = lazy(() =>
+  import('./components/Modals/DonateModal').then((module) => ({ default: module.DonateModal }))
+);
+
+const ShareModal = lazy(() =>
+  import('./components/Modals/ShareModal').then((module) => ({ default: module.ShareModal }))
+);
+
+const TunerModal = lazy(() =>
+  import('./components/Modals/TunerModal').then((module) => ({ default: module.TunerModal }))
+);
+
+const PlayAlongModal = lazy(() =>
+  import('./components/Modals/PlayAlongModal').then((module) => ({
+    default: module.PlayAlongModal,
+  }))
+);
+
+const PracticeResultModal = lazy(() =>
+  import('./components/Modals/PracticeResultModal').then((module) => ({
+    default: module.PracticeResultModal,
+  }))
+);
 import { OnboardingTour, TUTORIAL_STORAGE_KEY } from './components/Onboarding/OnboardingTour';
 import { useMidiInput } from './hooks/useMidiInput';
 import { usePracticeMode } from './hooks/usePracticeMode';
 import { useMicPitch } from './hooks/useMicPitch';
 import { usePlayAlong } from './hooks/usePlayAlong';
+import { useTimeout } from './hooks/useTimeout';
 import { decompressScoreFromHash } from './utils/shareUrl';
-import { audioEngine } from './audio/synth';
+import { normalizeScore } from './utils/scoreSchema';
 
 import {
   loadThemePreference,
   saveThemePreference,
   loadNamingPreference,
   saveNamingPreference,
+  loadKeyboardModePreference,
+  saveKeyboardModePreference,
 } from './utils/storage';
-import { NamingConvention, Pitch, Step, Accidental, Clef } from './types/music';
-import { pitchToMidi, midiToPitch, KEY_SIGNATURE_DATA } from './constants/pitches';
+import {
+  NamingConvention,
+  Pitch,
+  Step,
+  Accidental,
+  Clef,
+  KeyboardInputMode,
+  getItemPitches,
+} from './types/music';
+import {
+  pitchToMidi,
+  midiToPitch,
+  KEY_SIGNATURE_DATA,
+  formatPitchName,
+  DURATION_SPANISH_NAMES,
+} from './constants/pitches';
+import { audioEngine } from './audio/synth';
+
+// Identificadores de los modales de la aplicación. El estado `activeModal`
+// garantiza que solo haya uno abierto a la vez (Fase 6 del plan de UI).
+type AppModal =
+  | 'export'
+  | 'import'
+  | 'share'
+  | 'shortcuts'
+  | 'donate'
+  | 'templates'
+  | 'mixer'
+  | 'tuner'
+  | 'playalong';
 
 export default function App() {
   const {
     score,
+    saveState,
     selectedItemId,
     selectedMeasureIdx,
     selectedStaffIdx,
+    setSelectedStaffIdx,
     toggleGrandStaff,
     isGrandStaff,
     activeDuration,
@@ -52,6 +142,12 @@ export default function App() {
     setIsRestMode,
     isDotted,
     setIsDotted,
+    isTuplet,
+    setIsTuplet,
+    toggleSelectedTuplet,
+    activeVoice,
+    setActiveVoice,
+    setSelectedItemVoice,
     selectItem,
     insertNoteAt,
     insertRestAt,
@@ -59,12 +155,23 @@ export default function App() {
     transposeSelected,
     changeSelectedDuration,
     toggleSelectedDot,
+    toggleSelectedTie,
+    toggleSelectedSlur,
     setSelectedAccidental,
+    setSelectedArticulation,
+    setSelectedDynamic,
     updateSelectedLyric,
     updateSelectedChord,
     updateSelectedStep,
+    moveScoreItem,
+    addPitchToSelectedChord,
+    removePitchFromSelectedChord,
     addMeasure,
     deleteMeasure,
+    toggleMeasureRepeatStart,
+    toggleMeasureRepeatEnd,
+    setMeasureVolta,
+    setMeasureAnacrusis,
     updateTitle,
     updateComposer,
     updateTempo,
@@ -79,6 +186,47 @@ export default function App() {
     redo,
     canUndo,
     canRedo,
+    viewMode,
+    setViewMode,
+    activePartStaffIdx,
+    setActivePartStaffIdx,
+    layoutMode,
+    setLayoutMode,
+    measuresPerSystem,
+    setMeasuresPerSystem,
+    toggleMeasureSystemBreak,
+    toggleMeasurePageBreak,
+    setMeasureMultimeasureRest,
+    addStaff,
+    removeStaff,
+    updateStaffName,
+    updateStaffClef,
+    measureRange,
+    clipboard,
+    selectMeasure,
+    extendMeasureRange,
+    copySelectedMeasures,
+    pasteMeasures,
+    deleteSelectedMeasures,
+    navigatePreviousItem,
+    navigateNextItem,
+    setSelectedOrnament,
+    setSelectedHairpin,
+    setSelectedNoteType,
+    setSelectedFingering,
+    setSelectedPedal,
+    setMeasureBarline,
+    setMeasureNavigationMark,
+    setMeasureRehearsalMark,
+    toggleMeasureRepeatSign,
+    toggleMeasureCaesura,
+    toggleMeasureBreathMark,
+    setMeasureTempoText,
+    setMeasureTimeSignatureChange,
+    setMeasureKeySignatureChange,
+    updateScoreMetadata,
+    updateStaffShortName,
+    updateStaffTransposition,
   } = useScore();
 
   const {
@@ -96,28 +244,46 @@ export default function App() {
   } = useAudio(score);
 
   // Layout & Navigation State
-  const [activeTab, setActiveTab] = useState<SidebarTab>('editor');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => loadThemePreference());
   const [namingConvention, setNamingConvention] = useState<NamingConvention>(() =>
     loadNamingPreference()
   );
+  const [keyboardMode, setKeyboardMode] = useState<KeyboardInputMode>(() =>
+    loadKeyboardModePreference()
+  );
+  const [pianoBaseOctave, setPianoBaseOctave] = useState<number>(4);
+  const [isOctaveLockEnabled, setIsOctaveLockEnabled] = useState<boolean>(true);
   const [showNoteNames, setShowNoteNames] = useState<boolean>(true);
   const [showTablature, setShowTablature] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
+  // Bajo lg el Inspector funciona como cajón en superposición (overlay) y no
+  // comprime el lienzo, así que basta con arrancar cerrado en pantallas
+  // estrechas; no hace falta observar el ancho tras el montaje.
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(
+    () => typeof window !== 'undefined' && window.innerWidth < 1024
+  );
   const [isPianoCollapsed, setIsPianoCollapsed] = useState<boolean>(false);
 
-  // Modals state
-  const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
-  const [isImportOpen, setIsImportOpen] = useState<boolean>(false);
-  const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState<boolean>(false);
-  const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
-  const [isTemplatesOpen, setIsTemplatesOpen] = useState<boolean>(false);
-  const [isMixerOpen, setIsMixerOpen] = useState<boolean>(false);
+  // Gestor de modales exclusivo: `activeModal` a lo sumo contiene uno.
+  // El tour de bienvenida bloquea las aperturas mientras está activo.
+  const [activeModal, setActiveModal] = useState<AppModal | null>(null);
   const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(() => {
+    try {
+      // Limpiar claves obsoletas de prototipos anteriores (Sonata/Stavio) para que no bloqueen el nuevo tutorial de Pautello
+      localStorage.removeItem('stavio_tutorial_completed');
+      localStorage.removeItem('sonata_tutorial_completed');
+    } catch {
+      // Almacenamiento no disponible
+    }
     return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== 'true';
   });
+  const openModal = useCallback(
+    (id: AppModal) => {
+      if (!isTutorialOpen) setActiveModal(id);
+    },
+    [isTutorialOpen]
+  );
+  const closeModal = useCallback(() => setActiveModal(null), []);
 
   // Interactive Practice Mode ("Toca conmigo")
   const {
@@ -140,27 +306,73 @@ export default function App() {
 
   // Web MIDI & External Keyboard state
   const [activeMidiPitch, setActiveMidiPitch] = useState<number | null>(null);
+  // El resalte de la nota MIDI se apaga solo; una nota nueva reinicia el apagado.
+  const midiFlash = useTimeout();
 
   const { isConnected: isMidiConnected, connectedDevices } = useMidiInput({
-    onNoteOn: (midi, velocity) => {
+    onNoteOn: (midi) => {
       setActiveMidiPitch(midi);
       if (isPracticeActive) {
         checkPlayedMidi(midi);
       } else {
         const pitch = midiToPitch(midi);
-        insertNoteAt(selectedMeasureIdx, pitch);
-        audioEngine.playMidi(midi, 0.4, velocity / 127);
+        // insertNoteAt ya emite la nota al insertarla: no duplicar el sonido aquí.
+        insertNoteAt(selectedMeasureIdx, pitch, undefined, undefined, true);
       }
-      setTimeout(() => setActiveMidiPitch(null), 250);
+      midiFlash.schedule(() => setActiveMidiPitch(null), 250);
     },
     onNoteOff: () => {
       setActiveMidiPitch(null);
     },
   });
 
-  // Phase 3: Tuner & Play-Along Modals state
-  const [isTunerOpen, setIsTunerOpen] = useState<boolean>(false);
-  const [isPlayAlongOpen, setIsPlayAlongOpen] = useState<boolean>(false);
+  const toggleKeyboardMode = useCallback(() => {
+    setKeyboardMode((prev) => {
+      const next = prev === 'piano' ? 'notation' : 'piano';
+      saveKeyboardModePreference(next);
+      return next;
+    });
+  }, []);
+
+  const handleSelectKeyboardMode = useCallback((mode: KeyboardInputMode) => {
+    setKeyboardMode(mode);
+    saveKeyboardModePreference(mode);
+  }, []);
+
+  const handleShiftPianoOctave = useCallback((delta: number) => {
+    setPianoBaseOctave((prev) => Math.max(1, Math.min(8, prev + delta)));
+  }, []);
+
+  const handleToggleOctaveLock = useCallback(() => {
+    setIsOctaveLockEnabled((prev) => !prev);
+  }, []);
+
+  const handleInsertPitchDirect = useCallback(
+    (pitch: Pitch) => {
+      const midi = pitchToMidi(pitch);
+      setActiveMidiPitch(midi);
+      midiFlash.schedule(() => setActiveMidiPitch(null), 250);
+      if (isPracticeActive) {
+        audioEngine.playMidi(midi, 0.4, 0.85);
+        checkPlayedMidi(midi);
+      } else {
+        insertNoteAt(selectedMeasureIdx, pitch, undefined, undefined, true);
+      }
+    },
+    [isPracticeActive, checkPlayedMidi, insertNoteAt, selectedMeasureIdx, midiFlash]
+  );
+
+  const handleAddPitchDirectToChord = useCallback(
+    (pitch: Pitch) => {
+      const midi = pitchToMidi(pitch);
+      setActiveMidiPitch(midi);
+      midiFlash.schedule(() => setActiveMidiPitch(null), 250);
+      addPitchToSelectedChord(pitch);
+    },
+    [addPitchToSelectedChord, midiFlash]
+  );
+
+  // (Afinador y Play-Along se abren vía el gestor `activeModal`.)
 
   // Phase 3: Play-Along Multimedia Backing Track
   const {
@@ -201,10 +413,24 @@ export default function App() {
     }
   };
 
-  const handleStop = () => {
+  // Memorizado: entra en las dependencias del useMemo de `toolsItems` y sin esto
+  // el menú de Herramientas se reconstruye en cada render.
+  const handleStop = useCallback(() => {
     stop();
     if (isPlayAlongLoaded) {
       stopPlayAlong();
+    }
+  }, [stop, isPlayAlongLoaded, stopPlayAlong]);
+
+  // Recuerda el último volumen audible para que el botón de mute lo restaure
+  const lastAudibleVolumeRef = useRef<number>(0.8);
+
+  const handleToggleMute = () => {
+    if (volume > 0) {
+      lastAudibleVolumeRef.current = volume;
+      setVolume(0);
+    } else {
+      setVolume(lastAudibleVolumeRef.current);
     }
   };
 
@@ -213,19 +439,23 @@ export default function App() {
     if (typeof window !== 'undefined' && window.location.hash.startsWith('#share=')) {
       decompressScoreFromHash(window.location.hash)
         .then((sharedScore) => {
-          if (sharedScore) {
-            loadTemplate({
-              id: 'shared',
-              name: sharedScore.title || 'Partitura Compartida',
-              description: `Por ${sharedScore.composer || 'Anónimo'} (abierta desde enlace)`,
-              score: sharedScore,
-            });
+          // El enlace lo pudo generar cualquier versión de la app: se valida antes de cargarlo.
+          const normalized = sharedScore ? normalizeScore(sharedScore) : null;
+          if (!normalized) {
+            if (sharedScore)
+              console.error('El enlace compartido no contiene una partitura legible.');
+            return;
           }
+          loadTemplate({
+            id: 'shared',
+            name: normalized.title || 'Partitura Compartida',
+            description: `Por ${normalized.composer || 'Anónimo'} (abierta desde enlace)`,
+            score: normalized,
+          });
         })
         .catch((err) => console.error('Error al cargar enlace de partitura:', err));
     }
   }, [loadTemplate]);
-
 
   // Sync theme with HTML root class
   useEffect(() => {
@@ -285,28 +515,84 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, [score]);
 
+  // Texto que se anuncia al cambiar la selección. El pentagrama es puramente
+  // visual: sin este anuncio, quien navega con el teclado y un lector de
+  // pantalla mueve el resaltado sin recibir ninguna confirmación de dónde está.
+  const selectionAnnouncement = useMemo(() => {
+    const total = score.staves[0]?.measures.length ?? 0;
+    if (total === 0) return 'Partitura vacía.';
+
+    if (measureRange) {
+      const first = Math.min(measureRange.start, measureRange.end) + 1;
+      const last = Math.max(measureRange.start, measureRange.end) + 1;
+      return first === last
+        ? `Compás ${first} de ${total}.`
+        : `Compases ${first} a ${last} de ${total} seleccionados.`;
+    }
+
+    const measureNumber = selectedMeasureIdx + 1;
+    const item = selectedItemId
+      ? score.staves[0]?.measures[selectedMeasureIdx]?.items.find((it) => it.id === selectedItemId)
+      : null;
+
+    if (!item) return `Compás ${measureNumber} de ${total}.`;
+
+    const durationName = DURATION_SPANISH_NAMES[item.duration].toLowerCase();
+    if (item.type === 'rest') {
+      return `Compás ${measureNumber}: silencio de ${durationName}.`;
+    }
+
+    const names = getItemPitches(item)
+      .map((pitch) => formatPitchName(pitch, namingConvention))
+      .join(', ');
+    return `Compás ${measureNumber}: ${names}, ${durationName}.`;
+  }, [score, selectedItemId, selectedMeasureIdx, measureRange, namingConvention]);
+
   // Keyboard shortcut handlers
   useKeyboard({
-    onTogglePlay: togglePlay,
+    inputMode: keyboardMode,
+    pianoBaseOctave,
+    onShiftOctave: handleShiftPianoOctave,
+    onInsertPitchDirect: handleInsertPitchDirect,
+    onAddPitchDirectToChord: handleAddPitchDirectToChord,
+    onTogglePlay: handleTogglePlay,
     onDeleteSelected: deleteSelected,
+    onAddMeasure: () => addMeasure(selectedMeasureIdx),
+    onExtendMeasureRange: extendMeasureRange,
     onTransposeSelected: transposeSelected,
     onSelectDuration: (dur) => {
       setActiveDuration(dur);
-      if (selectedItemId) changeSelectedDuration(dur);
     },
     onInsertNoteStep: (step: Step) => {
-      const defaultOctave = score.staves[0]?.clef === 'bass' ? 3 : 4;
       const pitch: Pitch = {
         step,
-        octave: defaultOctave,
+        octave: pianoBaseOctave,
         accidental: activeAccidental,
       };
-      insertNoteAt(selectedMeasureIdx, pitch);
+      insertNoteAt(selectedMeasureIdx, pitch, undefined, undefined, true);
+    },
+    onAddPitchToChord: (step: Step) => {
+      const pitch: Pitch = {
+        step,
+        octave: pianoBaseOctave,
+        accidental: activeAccidental,
+      };
+      addPitchToSelectedChord(pitch);
     },
     onToggleRestMode: () => setIsRestMode((prev) => !prev),
     onToggleDot: () => {
       setIsDotted((prev) => !prev);
       if (selectedItemId) toggleSelectedDot();
+    },
+    onToggleTuplet: () => {
+      setIsTuplet((prev) => !prev);
+      if (selectedItemId) toggleSelectedTuplet();
+    },
+    onToggleTie: () => {
+      if (selectedItemId) toggleSelectedTie();
+    },
+    onToggleSlur: () => {
+      if (selectedItemId) toggleSelectedSlur();
     },
     onSetAccidental: (acc: Accidental) => {
       setActiveAccidental(acc);
@@ -315,25 +601,134 @@ export default function App() {
     onUndo: undo,
     onRedo: redo,
     onDeselect: () => selectItem(selectedMeasureIdx, null),
-    onOpenShortcuts: () => setIsShortcutsOpen(true),
+    onOpenShortcuts: () => openModal('shortcuts'),
+    onNavigatePreviousItem: navigatePreviousItem,
+    onNavigateNextItem: navigateNextItem,
+    onCopyMeasureRange: copySelectedMeasures,
+    onPasteMeasureRange: pasteMeasures,
+    onToggleVoice: () => setActiveVoice((prev) => (prev === 1 ? 2 : 1)),
+    onSelectVoice: setActiveVoice,
   });
 
   const primaryClef: Clef = score.staves[0]?.clef || 'treble';
   const keyLabel = KEY_SIGNATURE_DATA[score.keySignature]?.name || score.keySignature;
 
+  const fileItems: DropdownItem[] = useMemo(
+    () => [
+      {
+        id: 'new',
+        label: 'Nueva Partitura en Blanco',
+        description: 'Limpiar lienzo actual',
+        icon: <FilePlus className="w-4 h-4 text-amber-500" />,
+        onSelect: () => {
+          if (window.confirm('¿Deseas reiniciar la partitura con un lienzo en blanco?')) {
+            clearScore();
+          }
+        },
+      },
+      {
+        id: 'templates',
+        label: 'Obras y Plantillas...',
+        description: 'Obras maestras y ejercicios',
+        icon: <BookOpen className="w-4 h-4 text-purple-500" />,
+        onSelect: () => openModal('templates'),
+      },
+      {
+        id: 'import',
+        label: 'Importar...',
+        description: 'MusicXML, MIDI, JSON, PDF',
+        icon: <Upload className="w-4 h-4 text-blue-500" />,
+        onSelect: () => openModal('import'),
+      },
+      {
+        id: 'export',
+        label: 'Exportar...',
+        description: 'PDF, MIDI, WAV, MusicXML',
+        icon: <Download className="w-4 h-4 text-emerald-500" />,
+        onSelect: () => openModal('export'),
+      },
+      {
+        id: 'share',
+        label: 'Compartir Enlace',
+        description: 'Generar URL para compartir',
+        icon: <Share2 className="w-4 h-4 text-blue-500" />,
+        onSelect: () => openModal('share'),
+      },
+    ],
+    [clearScore, openModal]
+  );
+
+  const toolsItems: DropdownItem[] = useMemo(
+    () => [
+      {
+        id: 'tuner',
+        label: 'Afinador en Vivo',
+        description: 'Detección por micrófono',
+        icon: <Mic className="w-4 h-4 text-lime-600 dark:text-pastel-lime" />,
+        onSelect: () => openModal('tuner'),
+      },
+      {
+        id: 'playalong',
+        label: 'Play-Along Multimedia',
+        description: 'Pista de audio MP3',
+        icon: <Headphones className="w-4 h-4 text-purple-500 dark:text-pastel-purple" />,
+        onSelect: () => openModal('playalong'),
+      },
+      {
+        id: 'practice',
+        label: isPracticeActive ? 'Detener Práctica' : 'Modo Práctica ("Toca conmigo")',
+        description: 'Espera a que toques cada nota',
+        active: isPracticeActive,
+        icon: <Target className="w-4 h-4 text-lime-500" />,
+        onSelect: () => {
+          if (isPracticeActive) {
+            stopMicPractice();
+            stopPractice();
+          } else {
+            handleStop();
+            startPractice();
+            startMicPractice().catch(() => {});
+          }
+        },
+      },
+      {
+        id: 'mixer',
+        label: 'Sintetizador & Audio',
+        description: 'Efectos, volumen y tempo',
+        icon: <Sliders className="w-4 h-4 text-purple-500" />,
+        onSelect: () => openModal('mixer'),
+      },
+      {
+        id: 'shortcuts',
+        label: 'Atajos de Teclado',
+        description: 'Ver combinaciones rápidas (?)',
+        shortcut: '?',
+        icon: <HelpCircle className="w-4 h-4 text-slate-400" />,
+        onSelect: () => openModal('shortcuts'),
+      },
+      {
+        id: 'tutorial',
+        label: 'Tutorial de Bienvenida',
+        description: 'Guía interactiva inicial',
+        icon: <GraduationCap className="w-4 h-4 text-amber-500" />,
+        onSelect: () => setIsTutorialOpen(true),
+      },
+    ],
+    [
+      isPracticeActive,
+      stopMicPractice,
+      stopPractice,
+      handleStop,
+      startPractice,
+      startMicPractice,
+      openModal,
+    ]
+  );
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#f1f3f7] dark:bg-[#0c0d12] text-slate-900 dark:text-slate-100 font-sans transition-colors">
+    <div className="flex h-screen w-screen overflow-hidden print:h-auto print:overflow-visible print:block print:w-full print:max-w-full bg-slate-100 dark:bg-studio-bg text-slate-900 dark:text-slate-100 font-sans transition-colors">
       {/* 1. Left Sidebar Navigation (Matching reference design with full light/dark support) */}
       <Sidebar
-        activeTab={activeTab}
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-          if (tab === 'templates') {
-            setIsTemplatesOpen(true);
-          } else if (tab === 'mixer') {
-            setIsMixerOpen(true);
-          }
-        }}
         theme={theme}
         onToggleTheme={toggleTheme}
         namingConvention={namingConvention}
@@ -344,22 +739,17 @@ export default function App() {
         onToggleTablature={() => setShowTablature((prev) => !prev)}
         isPianoCollapsed={isPianoCollapsed}
         onTogglePiano={() => setIsPianoCollapsed((prev) => !prev)}
-        onOpenTemplates={() => setIsTemplatesOpen(true)}
-        onOpenMixer={() => setIsMixerOpen(true)}
-        onOpenExport={() => setIsExportOpen(true)}
-        onOpenImport={() => setIsImportOpen(true)}
-        onOpenShare={() => setIsShareOpen(true)}
-        onOpenTuner={() => setIsTunerOpen(true)}
-        onOpenPlayAlong={() => setIsPlayAlongOpen(true)}
-        onOpenShortcuts={() => setIsShortcutsOpen(true)}
-        onOpenDonate={() => setIsDonateOpen(true)}
+        onOpenTemplates={() => openModal('templates')}
+        onOpenShare={() => openModal('share')}
+        onOpenDonate={() => openModal('donate')}
         onOpenTutorial={() => setIsTutorialOpen(true)}
+        onOpenShortcuts={() => openModal('shortcuts')}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
 
       {/* 2. Main Central Studio Deck */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#f8fafc] dark:bg-[#0f1117] transition-colors">
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto print:overflow-visible print:block print:w-full print:max-w-full print:h-auto bg-slate-50 dark:bg-studio-bg transition-all duration-300 ease-in-out">
         {/* Top Navbar / Greeting Header */}
         <Navbar
           score={score}
@@ -373,15 +763,10 @@ export default function App() {
           onToggleLoop={toggleLoop}
           metronomeEnabled={metronomeEnabled}
           onToggleMetronome={toggleMetronome}
-          instrument={instrument}
-          onSetInstrument={setInstrument}
           volume={volume}
           onSetVolume={setVolume}
-          onLoadTemplate={loadTemplate}
+          onToggleMute={handleToggleMute}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
-          onToggleInspector={() => setIsInspectorCollapsed((prev) => !prev)}
-          onOpenImport={() => setIsImportOpen(true)}
-          onOpenShare={() => setIsShareOpen(true)}
           isMidiConnected={isMidiConnected}
           connectedDevices={connectedDevices}
           isPracticeMode={isPracticeActive}
@@ -397,70 +782,21 @@ export default function App() {
               startMicPractice().catch(() => {});
             }
           }}
-          onOpenTuner={() => setIsTunerOpen(true)}
-          onOpenPlayAlong={() => setIsPlayAlongOpen(true)}
-          isPlayAlongLoaded={isPlayAlongLoaded}
+          fileItems={fileItems}
+          toolsItems={toolsItems}
+          activeVoice={activeVoice}
+          onSelectVoice={setActiveVoice}
         />
 
-        {/* 3 Pastel Feature Cards (Matching the 3 top macaron cards in the reference image) */}
-        <div id="stat-cards-container" className="px-4 sm:px-6 pb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-          {/* Card 1: Amber Pastel Card - Métrica & Tonalidad */}
-          <StatCard
-            variant="amber"
-            title="Estructura Musical"
-            countLabel={`${score.timeSignature.beats}/${score.timeSignature.beatType}`}
-            subtitle="Métrica & Tonalidad"
-            value={keyLabel}
-            detail={`Clave de ${primaryClef === 'treble' ? 'Sol' : primaryClef === 'bass' ? 'Fa' : 'Do'}`}
-            actionTitle="Ver y modificar en el inspector"
-            onCardClick={() => setIsInspectorCollapsed(false)}
-            onAction={() => setIsInspectorCollapsed(false)}
-          />
-
-          {/* Card 2: Purple / Lavender Pastel Card - Instrumento & Tempo */}
-          <StatCard
-            variant="purple"
-            title="Audio & Síntesis"
-            countLabel={`${score.tempo} BPM`}
-            subtitle="Timbre Polifónico"
-            value={
-              instrument === 'piano'
-                ? 'Piano Acústico'
-                : instrument === 'marimba'
-                ? 'Marimba'
-                : instrument === 'strings'
-                ? 'Cuerdas'
-                : 'Flauta'
-            }
-            detail={`${playbackState.isPlaying ? 'Reproduciendo en vivo' : 'En pausa (Espacio)'}`}
-            actionTitle="Reproducir / Pausar (Espacio)"
-            onCardClick={() => setIsMixerOpen(true)}
-            onAction={togglePlay}
-          />
-
-          {/* Card 3: Lime Pastel Card - Notas & Compases */}
-          <StatCard
-            variant="lime"
-            title="Partitura"
-            countLabel={`${score.staves[0]?.measures.length || 0} C`}
-            subtitle="Extensión y Pasaje"
-            value={`${totalNotes} notas`}
-            detail={`Duración est.: ${estimatedDuration}`}
-            actionTitle="Añadir nuevo compás"
-            onAction={addMeasure}
-          />
-        </div>
-
         {/* Center Stage: Card container for Score Canvas + Modern Toolbar */}
-        <div className="flex-1 px-4 sm:px-6 pb-4 flex flex-col min-h-0">
-          <div className="flex-1 flex flex-col bg-white dark:bg-[#161922] rounded-2xl border border-slate-200 dark:border-[#232836] shadow-md overflow-hidden min-h-[450px] transition-colors">
+        <div className="flex-1 px-4 sm:px-6 pb-4 flex flex-col min-h-0 print:px-0 print:pb-0 print:block print:w-full print:max-w-full">
+          <div className="flex-1 flex flex-col bg-white dark:bg-studio-card rounded-2xl border border-slate-200 dark:border-studio-border shadow-md overflow-hidden min-h-0 transition-colors print:rounded-none print:border-none print:shadow-none print:overflow-visible print:block print:w-full print:max-w-full">
             {/* Embedded Toolbar for Note Durations & Accidentals with full reactive selection updates */}
             <div id="toolbar-container">
               <Toolbar
                 activeDuration={activeDuration}
                 onSelectDuration={(dur) => {
                   setActiveDuration(dur);
-                  if (selectedItemId) changeSelectedDuration(dur);
                 }}
                 isRestMode={isRestMode}
                 onToggleRestMode={() => setIsRestMode((prev) => !prev)}
@@ -474,21 +810,55 @@ export default function App() {
                   setIsDotted((prev) => !prev);
                   if (selectedItemId) toggleSelectedDot();
                 }}
+                isTuplet={isTuplet}
+                onToggleTuplet={() => {
+                  setIsTuplet((prev) => !prev);
+                  if (selectedItemId) toggleSelectedTuplet();
+                }}
+                isTied={(() => {
+                  if (!selectedItemId) return false;
+                  for (const staff of score.staves) {
+                    const it = staff.measures[selectedMeasureIdx]?.items.find(
+                      (i) => i.id === selectedItemId
+                    );
+                    if (it) return !!it.isTied;
+                  }
+                  return false;
+                })()}
+                onToggleTie={() => {
+                  if (selectedItemId) toggleSelectedTie();
+                }}
               />
             </div>
 
             {/* Interactive Vector Score Canvas */}
-            <div id="score-canvas" className="flex-1 flex overflow-auto relative">
+            <div
+              id="score-canvas"
+              role="region"
+              aria-label="Partitura"
+              aria-describedby="score-selection-status"
+              className="flex-1 flex overflow-auto relative print:overflow-visible print:block print:w-full print:max-w-full"
+            >
+              {/* Estado de la selección para lectores de pantalla. Va dentro de
+                  la región para que `aria-describedby` lo resuelva. */}
+              <p id="score-selection-status" aria-live="polite" className="sr-only">
+                {selectionAnnouncement}
+              </p>
+
               <ScoreView
                 score={score}
                 selectedItemId={selectedItemId}
                 selectedMeasureIdx={selectedMeasureIdx}
                 selectedStaffIdx={selectedStaffIdx}
                 onSelectItem={(mIdx, itemId, sIdx) => selectItem(mIdx, itemId, sIdx)}
-                onInsertNoteAt={(mIdx, pitch, sIdx) => insertNoteAt(mIdx, pitch, undefined, sIdx)}
-                onInsertRestAt={(mIdx, sIdx) => insertRestAt(mIdx, undefined, sIdx)}
+                onInsertNoteAt={(mIdx, pitch, sIdx) =>
+                  insertNoteAt(mIdx, pitch, undefined, sIdx, true)
+                }
+                onInsertRestAt={(mIdx, sIdx) => insertRestAt(mIdx, undefined, sIdx, true)}
                 onDeleteMeasure={deleteMeasure}
                 activeDuration={activeDuration}
+                isDotted={isDotted}
+                isTuplet={isTuplet}
                 activeAccidental={activeAccidental}
                 isRestMode={isRestMode}
                 namingConvention={namingConvention}
@@ -497,23 +867,40 @@ export default function App() {
                 showTablature={showTablature}
                 practiceTargetNote={
                   isPracticeActive && practiceTargetNote
-                    ? { measureIdx: practiceTargetNote.measureIdx, itemIdx: practiceTargetNote.itemIdx }
+                    ? {
+                        measureIdx: practiceTargetNote.measureIdx,
+                        itemIdx: practiceTargetNote.itemIdx,
+                      }
                     : null
                 }
                 practiceHitResult={practiceHitResult}
+                viewMode={viewMode}
+                activePartStaffIdx={activePartStaffIdx}
+                layoutMode={layoutMode}
+                measuresPerSystem={measuresPerSystem}
+                onToggleSystemBreak={toggleMeasureSystemBreak}
+                onTogglePageBreak={toggleMeasurePageBreak}
+                onSetMultimeasureRest={setMeasureMultimeasureRest}
+                measureRange={measureRange}
+                onSelectMeasure={selectMeasure}
+                activeOctave={pianoBaseOctave}
+                isOctaveLockEnabled={isOctaveLockEnabled}
+                onMoveItem={moveScoreItem}
+                onAddMeasureAfter={addMeasure}
               />
             </div>
           </div>
         </div>
 
         {/* Bottom Integrated Piano Roll (Collapsible) */}
-        <div id="piano-container">
+        {/* El id #piano-container vive en la raíz de VirtualPiano: no duplicarlo aquí */}
+        <div>
           <VirtualPiano
             onNoteClick={(pitch) => {
               if (isPracticeActive) {
                 checkPlayedMidi(pitchToMidi(pitch));
               } else {
-                insertNoteAt(selectedMeasureIdx, pitch);
+                insertNoteAt(selectedMeasureIdx, pitch, undefined, undefined, true);
               }
             }}
             namingConvention={namingConvention}
@@ -523,8 +910,27 @@ export default function App() {
             connectedDevices={connectedDevices}
             collapsed={isPianoCollapsed}
             onToggleCollapse={() => setIsPianoCollapsed((prev) => !prev)}
+            keyboardMode={keyboardMode}
+            onToggleKeyboardMode={toggleKeyboardMode}
+            pianoBaseOctave={pianoBaseOctave}
+            onShiftOctave={handleShiftPianoOctave}
+            onSelectOctave={(oct) => setPianoBaseOctave(oct)}
+            isOctaveLockEnabled={isOctaveLockEnabled}
+            onToggleOctaveLock={handleToggleOctaveLock}
           />
         </div>
+
+        {/* Bottom status bar (IDE-style footer): estructura, conteo y autoguardado */}
+        <StatusBar
+          saveState={saveState}
+          timeSignature={`${score.timeSignature.beats}/${score.timeSignature.beatType}`}
+          keyLabel={keyLabel}
+          clefLabel={`Clave de ${primaryClef === 'treble' ? 'Sol' : primaryClef === 'bass' ? 'Fa' : 'Do'}`}
+          measureCount={score.staves[0]?.measures.length || 0}
+          totalNotes={totalNotes}
+          duration={estimatedDuration}
+          onOpenStructure={() => setIsInspectorCollapsed(false)}
+        />
       </main>
 
       {/* 3. Right Inspector Column (Collapsible & Responsive with stacked cards) */}
@@ -547,132 +953,190 @@ export default function App() {
         onTransposeSelected={transposeSelected}
         onChangeDuration={changeSelectedDuration}
         onToggleDot={toggleSelectedDot}
+        onToggleTuplet={toggleSelectedTuplet}
+        onToggleTie={toggleSelectedTie}
+        onToggleSlur={toggleSelectedSlur}
         onSetAccidental={setSelectedAccidental}
+        onSetArticulation={setSelectedArticulation}
+        onSetDynamic={setSelectedDynamic}
         onUpdateLyric={updateSelectedLyric}
         onUpdateChord={updateSelectedChord}
         onUpdateStep={updateSelectedStep}
+        onAddPitchToChord={addPitchToSelectedChord}
+        onRemovePitchFromChord={removePitchFromSelectedChord}
         onClearScore={clearScore}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
-        onOpenExport={() => setIsExportOpen(true)}
         isGrandStaff={isGrandStaff}
         onToggleGrandStaff={toggleGrandStaff}
+        onToggleRepeatStart={toggleMeasureRepeatStart}
+        onToggleRepeatEnd={toggleMeasureRepeatEnd}
+        onSetVolta={setMeasureVolta}
+        onSetAnacrusis={setMeasureAnacrusis}
+        onToggleSystemBreak={toggleMeasureSystemBreak}
+        onTogglePageBreak={toggleMeasurePageBreak}
+        onSetMultimeasureRest={setMeasureMultimeasureRest}
+        measuresPerSystem={measuresPerSystem}
+        onSetMeasuresPerSystem={setMeasuresPerSystem}
+        layoutMode={layoutMode}
+        onSelectLayoutMode={setLayoutMode}
+        viewMode={viewMode}
+        activePartStaffIdx={activePartStaffIdx}
+        onSelectViewMode={setViewMode}
+        onSelectPartStaffIdx={setActivePartStaffIdx}
+        selectedStaffIdx={selectedStaffIdx}
+        onSelectStaff={setSelectedStaffIdx}
+        onAddStaff={addStaff}
+        onRemoveStaff={removeStaff}
+        onUpdateStaffName={updateStaffName}
+        onUpdateStaffClef={updateStaffClef}
+        measureRange={measureRange}
+        onCopyMeasureRange={copySelectedMeasures}
+        onPasteMeasureRange={pasteMeasures}
+        onDeleteSelectedMeasures={deleteSelectedMeasures}
+        hasClipboardMeasures={!!(clipboard && clipboard.stavesMeasures.length > 0)}
         isCollapsed={isInspectorCollapsed}
         onToggleCollapse={() => setIsInspectorCollapsed((prev) => !prev)}
+        onSetOrnament={setSelectedOrnament}
+        onSetHairpin={setSelectedHairpin}
+        onSetNoteType={setSelectedNoteType}
+        onSetFingering={setSelectedFingering}
+        onSetPedal={setSelectedPedal}
+        onSetBarline={setMeasureBarline}
+        onSetNavigationMark={setMeasureNavigationMark}
+        onSetRehearsalMark={setMeasureRehearsalMark}
+        onToggleRepeatSign={toggleMeasureRepeatSign}
+        onToggleCaesura={toggleMeasureCaesura}
+        onToggleBreathMark={toggleMeasureBreathMark}
+        onSetTempoText={setMeasureTempoText}
+        onSetTimeSignatureChange={setMeasureTimeSignatureChange}
+        onSetKeySignatureChange={setMeasureKeySignatureChange}
+        onUpdateScoreMetadata={updateScoreMetadata}
+        onUpdateStaffShortName={updateStaffShortName}
+        onUpdateStaffTransposition={updateStaffTransposition}
+        onSetItemVoice={setSelectedItemVoice}
       />
 
-      {/* Dialog Modals */}
-      <ImportModal
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
-        onImportScore={(importedScore) => {
-          loadTemplate({
-            id: 'imported',
-            name: importedScore.title,
-            description: 'Partitura importada',
-            score: importedScore,
-          });
-        }}
-      />
+      {/* Dialog Modals. Solo se monta el que está abierto, para que su código
+          llegue en su propio chunk y no en el arranque. */}
+      <Suspense fallback={null}>
+        {activeModal === 'import' && (
+          <ImportModal
+            isOpen
+            onClose={closeModal}
+            onImportScore={(importedScore) => {
+              loadTemplate({
+                id: 'imported',
+                name: importedScore.title,
+                description: 'Partitura importada',
+                score: importedScore,
+              });
+            }}
+          />
+        )}
 
-      <ExportModal
-        score={score}
-        instrument={instrument}
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        onOpenImport={() => setIsImportOpen(true)}
-        onImportScore={(importedScore) => {
-          loadTemplate({
-            id: 'imported',
-            name: importedScore.title,
-            description: 'Partitura importada',
-            score: importedScore,
-          });
-        }}
-      />
+        {activeModal === 'export' && (
+          <ExportModal
+            score={score}
+            instrument={instrument}
+            isOpen
+            onClose={closeModal}
+            onOpenImport={() => openModal('import')}
+            onImportScore={(importedScore) => {
+              loadTemplate({
+                id: 'imported',
+                name: importedScore.title,
+                description: 'Partitura importada',
+                score: importedScore,
+              });
+            }}
+          />
+        )}
 
-      <TemplatesModal
-        isOpen={isTemplatesOpen}
-        onClose={() => setIsTemplatesOpen(false)}
-        onLoadTemplate={loadTemplate}
-      />
+        {activeModal === 'templates' && (
+          <TemplatesModal isOpen onClose={closeModal} onLoadTemplate={loadTemplate} />
+        )}
 
-      <MixerModal
-        isOpen={isMixerOpen}
-        onClose={() => setIsMixerOpen(false)}
-        instrument={instrument}
-        onSetInstrument={setInstrument}
-        volume={volume}
-        onSetVolume={setVolume}
-        tempo={score.tempo}
-        onSetTempo={updateTempo}
-        metronomeEnabled={metronomeEnabled}
-        onToggleMetronome={toggleMetronome}
-      />
+        {activeModal === 'mixer' && (
+          <MixerModal
+            isOpen
+            onClose={closeModal}
+            instrument={instrument}
+            onSetInstrument={setInstrument}
+            volume={volume}
+            onSetVolume={setVolume}
+            tempo={score.tempo}
+            onSetTempo={updateTempo}
+            metronomeEnabled={metronomeEnabled}
+            onToggleMetronome={toggleMetronome}
+          />
+        )}
 
-      <ShortcutsModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+        {activeModal === 'shortcuts' && (
+          <ShortcutsModal
+            isOpen
+            onClose={closeModal}
+            keyboardMode={keyboardMode}
+            onToggleKeyboardMode={toggleKeyboardMode}
+          />
+        )}
 
-      <DonateModal
-        isOpen={isDonateOpen}
-        onClose={() => setIsDonateOpen(false)}
-      />
+        {activeModal === 'donate' && <DonateModal isOpen onClose={closeModal} />}
 
-      <ShareModal
-        score={score}
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
-      />
+        {activeModal === 'share' && <ShareModal score={score} isOpen onClose={closeModal} />}
 
-      {/* Real-time Chromatic Tuner Modal */}
-      <TunerModal
-        isOpen={isTunerOpen}
-        onClose={() => setIsTunerOpen(false)}
-        namingConvention={namingConvention}
-      />
+        {/* Real-time Chromatic Tuner Modal */}
+        {activeModal === 'tuner' && (
+          <TunerModal isOpen onClose={closeModal} namingConvention={namingConvention} />
+        )}
 
-      {/* Play-Along Audio Backing Track Modal */}
-      <PlayAlongModal
-        isOpen={isPlayAlongOpen}
-        onClose={() => setIsPlayAlongOpen(false)}
-        audioName={playAlongName}
-        audioDuration={playAlongDuration}
-        currentTime={playAlongTime}
-        isPlaying={isPlayAlongPlaying}
-        playbackRate={playAlongSpeed}
-        volume={playAlongVolume}
-        isAudioLoaded={isPlayAlongLoaded}
-        onLoadAudio={loadPlayAlongAudio}
-        onRemoveAudio={removePlayAlongAudio}
-        onPlay={playPlayAlong}
-        onPause={pausePlayAlong}
-        onStop={stopPlayAlong}
-        onSeek={seekPlayAlong}
-        onSetPlaybackRate={setPlayAlongSpeed}
-        onSetVolume={setPlayAlongVolume}
-      />
+        {/* Play-Along Audio Backing Track Modal */}
+        {activeModal === 'playalong' && (
+          <PlayAlongModal
+            isOpen
+            onClose={closeModal}
+            audioName={playAlongName}
+            audioDuration={playAlongDuration}
+            currentTime={playAlongTime}
+            isPlaying={isPlayAlongPlaying}
+            playbackRate={playAlongSpeed}
+            volume={playAlongVolume}
+            isAudioLoaded={isPlayAlongLoaded}
+            onLoadAudio={loadPlayAlongAudio}
+            onRemoveAudio={removePlayAlongAudio}
+            onPlay={playPlayAlong}
+            onPause={pausePlayAlong}
+            onStop={stopPlayAlong}
+            onSeek={seekPlayAlong}
+            onSetPlaybackRate={setPlayAlongSpeed}
+            onSetVolume={setPlayAlongVolume}
+          />
+        )}
 
-      {/* Practice Mode Completion Scorecard */}
-      <PracticeResultModal
-        isOpen={isPracticeCompleted}
-        accuracy={practiceAccuracy}
-        streak={practiceStreak}
-        onRestart={() => {
-          resetPractice();
-          startPractice();
-        }}
-        onClose={stopPractice}
-      />
+        {/* Practice Mode Completion Scorecard */}
+        {isPracticeCompleted && (
+          <PracticeResultModal
+            isOpen
+            accuracy={practiceAccuracy}
+            streak={practiceStreak}
+            onRestart={() => {
+              resetPractice();
+              startPractice();
+            }}
+            onClose={stopPractice}
+          />
+        )}
+      </Suspense>
 
       {/* Interactive First-Launch Onboarding Walkthrough */}
       <OnboardingTour
         isOpen={isTutorialOpen}
         onClose={() => setIsTutorialOpen(false)}
         onComplete={() => setIsTutorialOpen(false)}
+        keyboardMode={keyboardMode}
+        onSelectKeyboardMode={handleSelectKeyboardMode}
       />
     </div>
   );
