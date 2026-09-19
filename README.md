@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="public/icon.svg" alt="Pautello" width="36" height="36" align="middle" style="vertical-align: middle;" /> Pautello
+# <img src="public/icon.svg" alt="Pautello" width="36" height="36" align="top" style="vertical-align: middle;" /> Pautello
 
 ### Editor y Creador Profesional de Partituras Libres
 
