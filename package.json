@@ -40,7 +40,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "electron:start": "electron .",
-    "package:win": "pnpm build:desktop && electron-builder --win --x64"
+    "package:win": "pnpm build:desktop && electron-builder --win --x64",
+    "package:mac": "pnpm build:desktop && npx @electron/packager . \"Pautello\" --platform=darwin --arch=arm64,x64 --out=release --overwrite --asar --no-prune --ignore=\"^/(node_modules|src|coverage|\\.git|\\.github|partituras_reales|tasks|release)\" --app-bundle-id=com.pautello.partituras --app-category-type=public.app-category.music",
+    "package:mac:builder": "pnpm build:desktop && electron-builder --mac"
   },
   "dependencies": {
     "@fontsource/eb-garamond": "^5.3.0",
@@ -97,6 +99,50 @@
           "arch": [
             "x64"
           ]
+        }
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.music",
+      "artifactName": "Pautello-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "universal",
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "universal",
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Pautello necesita acceso al micrófono para la afinación y detección de notas en tiempo real."
+      }
+    },
+    "dmg": {
+      "title": "Pautello ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
         }
       ]
     },
