@@ -91,7 +91,18 @@ describe('ScoreInspector Component', () => {
   });
 
   it('muestra estado colapsado cuando isCollapsed es true', () => {
-    render(<ScoreInspector {...defaultProps} isCollapsed={true} onToggleCollapse={vi.fn()} />);
+    const { container } = render(
+      <ScoreInspector {...defaultProps} isCollapsed={true} onToggleCollapse={vi.fn()} />
+    );
     expect(screen.getByTitle(/abrir panel inspector/i)).toBeDefined();
+    expect(container.firstChild).toHaveClass('dark:bg-studio-surface');
+  });
+
+  it('aplica las clases de fondo y borde de modo oscuro de estudio (dark:bg-studio-surface)', () => {
+    const { container } = render(<ScoreInspector {...defaultProps} />);
+    const aside = container.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(aside).toHaveClass('dark:bg-studio-surface');
+    expect(aside).toHaveClass('dark:border-studio-border');
   });
 });

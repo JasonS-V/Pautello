@@ -269,7 +269,7 @@ export const MeasureInspectorTab: React.FC<MeasureInspectorTabProps> = ({
   const fill = metrics ? FILL_STYLES[metrics.state] : FILL_STYLES.incomplete;
 
   return (
-    <div className="space-y-3 p-3 text-slate-800 dark:text-slate-100">
+    <div className="space-y-3 text-slate-800 dark:text-slate-100">
       {/* Cabecera */}
       <header className="flex items-end justify-between gap-2">
         <div>

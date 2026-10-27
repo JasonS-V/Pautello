@@ -57,11 +57,11 @@ const FOCUS =
 
 const BTN_BASE = `px-2 py-1.5 text-[11px] font-medium rounded-md border transition-all duration-150 active:scale-95 hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 ${FOCUS}`;
 const BTN_IDLE =
-  'bg-white dark:bg-slate-900/40 border-slate-200/80 dark:border-studio-border text-slate-700 dark:text-slate-300';
+  'bg-white dark:bg-studio-elevated border-slate-200/80 dark:border-studio-border text-slate-700 dark:text-slate-300';
 const BTN_ACTIVE =
   'bg-amber-50 dark:bg-amber-500/10 border-amber-500/60 text-amber-700 dark:text-pastel-amber';
 
-const INPUT_CLS = `w-full px-2.5 py-1.5 text-xs rounded-md border bg-white dark:bg-slate-900/40 border-slate-200/80 dark:border-studio-border text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-colors duration-150 hover:border-amber-500/40 ${FOCUS}`;
+const INPUT_CLS = `w-full px-2.5 py-1.5 text-xs rounded-md border bg-white dark:bg-studio-elevated border-slate-200/80 dark:border-studio-border text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-colors duration-150 hover:border-amber-500/40 ${FOCUS}`;
 
 const STEPS: Step[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const LATIN: Record<Step, string> = {
@@ -225,7 +225,7 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
             ['Supr', 'Eliminar'],
           ].map(([k, d]) => (
             <li key={k} className="flex items-center gap-1.5">
-              <kbd className="px-1.5 py-0.5 rounded border border-slate-200/80 dark:border-studio-border bg-white dark:bg-slate-900/40 font-mono text-[10px] text-slate-700 dark:text-slate-300">
+              <kbd className="px-1.5 py-0.5 rounded border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-elevated font-mono text-[10px] text-slate-700 dark:text-slate-300">
                 {k}
               </kbd>
               <span>{d}</span>
@@ -256,7 +256,7 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
     selectedItem.pedal === 'start' ? 'down' : selectedItem.pedal === 'stop' ? 'up' : null;
 
   return (
-    <div className="space-y-5 p-3 bg-slate-50 dark:bg-studio-card text-slate-800 dark:text-slate-100">
+    <div className="space-y-4 text-slate-800 dark:text-slate-100">
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -277,7 +277,7 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
           onClick={onDeleteSelected}
           aria-label="Eliminar elemento seleccionado"
           title="Eliminar"
-          className={`shrink-0 p-2 rounded-md border border-slate-200/80 dark:border-studio-border text-red-600 dark:text-red-400 bg-white dark:bg-slate-900/40 transition-all duration-150 active:scale-95 hover:border-red-500/50 ${FOCUS}`}
+          className={`shrink-0 p-2 rounded-md border border-slate-200/80 dark:border-studio-border text-red-600 dark:text-red-400 bg-white dark:bg-studio-elevated transition-all duration-150 active:scale-95 hover:border-red-500/50 ${FOCUS}`}
         >
           <Trash2 size={14} aria-hidden="true" />
         </button>
@@ -399,7 +399,7 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
             {pitches.map((p, i) => (
               <li
                 key={`${p.step}${p.accidental ?? ''}${p.octave}-${i}`}
-                className="flex items-center justify-between px-2.5 py-1.5 rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-slate-900/40"
+                className="flex items-center justify-between px-2.5 py-1.5 rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-elevated"
               >
                 <span className="text-xs font-medium tabular-nums">
                   {formatPitchName(p, namingConvention)}

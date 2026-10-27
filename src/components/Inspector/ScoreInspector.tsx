@@ -225,7 +225,7 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="w-12 border-l border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-panel flex flex-col items-center py-4 gap-3 shrink-0 no-print select-none">
+      <div className="w-12 border-l border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface flex flex-col items-center py-4 gap-3 shrink-0 no-print select-none">
         {onToggleCollapse && (
           <button
             type="button"
@@ -243,7 +243,7 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
 
   return (
     <aside
-      className="w-80 border-l border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-panel flex flex-col shrink-0 no-print select-none h-full transition-all duration-200"
+      className="w-80 border-l border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface flex flex-col shrink-0 no-print select-none h-full transition-all duration-200"
       aria-label="Inspector de propiedades"
     >
       <div className="p-3 border-b border-slate-200/80 dark:border-studio-border flex flex-col gap-2">

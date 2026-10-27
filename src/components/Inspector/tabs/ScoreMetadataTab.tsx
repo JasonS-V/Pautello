@@ -73,12 +73,12 @@ const KEY_OPTIONS: CustomSelectOption<KeySignature>[] = (
   label: KEY_SIGNATURE_DATA[k].name,
 }));
 
-const PANEL = 'rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-studio-card p-3';
+const PANEL = 'rounded-lg border border-slate-200/80 dark:border-studio-border bg-slate-50 dark:bg-studio-card p-3';
 const LABEL = 'block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1';
 const INPUT =
-  'w-full rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-studio-surface px-2 py-1.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500';
+  'w-full rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface px-2 py-1.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500';
 const ICON_BTN =
-  'inline-flex items-center justify-center rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-studio-surface p-1.5 text-slate-500 dark:text-slate-300 transition-colors hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-indigo-500';
+  'inline-flex items-center justify-center rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface p-1.5 text-slate-500 dark:text-slate-300 transition-colors hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-amber-500';
 
 const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
   <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
@@ -152,7 +152,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3 text-slate-800 dark:text-slate-100">
+    <div className="flex flex-col gap-3 text-slate-800 dark:text-slate-100">
       {/* Armadura, compas y clave */}
       <section className={PANEL} aria-labelledby="score-meta-signatures">
         <div id="score-meta-signatures">
@@ -192,7 +192,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
                 type="checkbox"
                 checked={transposeNotes}
                 onChange={(e) => setTransposeNotes(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-slate-300 dark:border-white/20 accent-indigo-500"
+                className="h-3.5 w-3.5 rounded border-slate-300 dark:border-studio-border accent-indigo-500"
               />
               Transponer notas al cambiar la armadura
             </label>
@@ -204,7 +204,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
       <section className={PANEL} aria-labelledby="score-meta-staves">
         <div id="score-meta-staves" className="flex items-center justify-between">
           <SectionTitle icon={<Layers size={14} />}>Instrumentos y pentagramas</SectionTitle>
-          <span className="mb-2 rounded-full border border-slate-200 dark:border-white/10 bg-white dark:bg-studio-surface px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+          <span className="mb-2 rounded-full border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
             {staves.length}
           </span>
         </div>
@@ -219,7 +219,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
                 className={`rounded-md border p-2 transition-colors ${
                   isSelected
                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
-                    : 'border-slate-200 dark:border-white/10 bg-white dark:bg-studio-surface'
+                    : 'border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface'
                 }`}
               >
                 <div className="flex items-center gap-1.5">
@@ -231,7 +231,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                       isSelected
                         ? 'bg-indigo-500 text-white'
-                        : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-300'
+                        : 'bg-slate-200 dark:bg-studio-elevated text-slate-600 dark:text-slate-300'
                     }`}
                   >
                     {idx + 1}
@@ -278,7 +278,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
                       <button
                         type="button"
                         onClick={() => setConfirmRemoveIdx(null)}
-                        className="rounded border border-slate-300 dark:border-white/10 bg-white dark:bg-studio-surface px-2 py-0.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10"
+                        className="rounded border border-slate-300 dark:border-studio-border bg-white dark:bg-studio-surface px-2 py-0.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-studio-hover"
                       >
                         Cancelar
                       </button>
@@ -298,7 +298,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
         </ul>
 
         {onAddStaff && (
-          <div className="mt-2 flex items-center gap-1.5 border-t border-slate-200 dark:border-white/10 pt-2">
+          <div className="mt-2 flex items-center gap-1.5 border-t border-slate-200/80 dark:border-studio-border pt-2">
             <input
               type="text"
               value={newStaffName}
@@ -336,7 +336,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
               type="checkbox"
               checked={isGrandStaff}
               onChange={onToggleGrandStaff}
-              className="h-3.5 w-3.5 rounded border-slate-300 dark:border-white/20 accent-indigo-500"
+              className="h-3.5 w-3.5 rounded border-slate-300 dark:border-studio-border accent-indigo-500"
             />
             Sistema de piano (llave)
           </label>
@@ -352,7 +352,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
           <div
             role="group"
             aria-label="Modo de vista"
-            className="flex rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-studio-surface p-0.5"
+            className="flex rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface p-0.5"
           >
             {(['full', 'part'] as const).map((mode) => (
               <button
@@ -363,7 +363,7 @@ export const ScoreMetadataTab: React.FC<ScoreMetadataTabProps> = ({
                 className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                   viewMode === mode
                     ? 'bg-indigo-600 text-white'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-studio-hover'
                 }`}
               >
                 {mode === 'full' ? 'Partitura completa' : 'Parte individual'}
