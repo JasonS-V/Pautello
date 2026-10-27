@@ -3,11 +3,14 @@
  * standalone SVG vector graphics and rasterized high-resolution PNG images.
  */
 
+import { Score } from '../types/music';
+import { formatEmbeddedScoreMarker, injectScoreIntoPngBytes } from '../omr/scorePayloadCodec';
+
 /**
  * Extracts and synthesizes a standalone SVG document containing all system staves
  * currently rendered on the score canvas.
  */
-export function getScoreSvgString(): string {
+export function getScoreSvgString(score?: Score): string {
   if (typeof document === 'undefined') {
     return '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"></svg>';
   }
@@ -48,9 +51,12 @@ export function getScoreSvgString(): string {
 
   totalHeight += 50; // bottom padding
   const totalWidth = maxWidth + 60;
+  const metadataBlock = score
+    ? `\n  <desc id="pautello-score-payload">${formatEmbeddedScoreMarker(score)}</desc>`
+    : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">${metadataBlock}
   <style>
     text { font-family: 'EB Garamond', Garamond, Georgia, serif; fill: #1e293b; }
     line { stroke: #334155; }
@@ -64,16 +70,16 @@ export function getScoreSvgString(): string {
 /**
  * Generates an SVG Blob of the currently displayed score engraving.
  */
-export function exportScoreToSvg(): Blob {
-  const svgText = getScoreSvgString();
+export function exportScoreToSvg(score?: Score): Blob {
+  const svgText = getScoreSvgString(score);
   return new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
 }
 
 /**
  * Renders the score SVG into a rasterized high-resolution PNG Blob via Canvas.
  */
-export async function exportScoreToPng(scale: number = 2): Promise<Blob> {
-  const svgText = getScoreSvgString();
+export async function exportScoreToPng(scale: number = 2, score?: Score): Promise<Blob> {
+  const svgText = getScoreSvgString(score);
 
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || typeof Image === 'undefined') {
@@ -108,11 +114,21 @@ export async function exportScoreToPng(scale: number = 2): Promise<Blob> {
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
 
-      canvas.toBlob((pngBlob) => {
-        if (pngBlob) {
-          resolve(pngBlob);
-        } else {
+      canvas.toBlob(async (pngBlob) => {
+        if (!pngBlob) {
           reject(new Error('Error al convertir canvas a formato PNG.'));
+          return;
+        }
+        if (!score) {
+          resolve(pngBlob);
+          return;
+        }
+        try {
+          const buf = await pngBlob.arrayBuffer();
+          const withPayload = injectScoreIntoPngBytes(new Uint8Array(buf), score);
+          resolve(new Blob([new Uint8Array(withPayload)], { type: 'image/png' }));
+        } catch {
+          resolve(pngBlob);
         }
       }, 'image/png');
     };

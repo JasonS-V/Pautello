@@ -1,0 +1,298 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { describe, it, expect } from 'vitest';
+import * as ort from 'onnxruntime-web/wasm';
+import {
+  i2wFromVocab,
+  decodeLine,
+  lineFragment,
+  assembleIR,
+  OmrStaffMeta,
+  OmrTokenEvent,
+} from '../omrDecode';
+import { grayFromBytes, normalizeStaff } from '../omrPreprocess';
+import { convertOmrIrToScore } from '../omrToScore';
+
+function makeEventsFromSubtokens(subtokens: string[]): OmrTokenEvent[] {
+  return subtokens.map((token, idx) => ({
+    token,
+    f0: idx * 2,
+    f1: idx * 2 + 1,
+    confidence: 0.96,
+  }));
+}
+
+describe('omrDecode & omrToScore pipeline', () => {
+  it('decodifica logits CTC colapsando repeticiones y descartando blanks (clase 0)', () => {
+    const vocab = ['*clefG2', '<b>', '4', 'c', '='];
+    const i2w = i2wFromVocab(vocab);
+    // Clases: 0=blank, 1=*clefG2, 2=<b>, 3=4, 4=c, 5==
+    const classes = [0, 1, 1, 0, 2, 0, 3, 3, 0, 4, 0, 2, 5];
+    const C = vocab.length + 1;
+    const logits = new Float32Array(classes.length * C).fill(-5);
+    classes.forEach((cls, t) => {
+      logits[t * C + cls] = 8.0;
+    });
+
+    const events = decodeLine(logits, classes.length, C, i2w);
+    expect(events.map((e) => e.token)).toEqual(['*clefG2', '<b>', '4', 'c', '<b>', '=']);
+    expect(events[0].confidence).toBeGreaterThan(0.9);
+  });
+
+  it('ensambla una partitura de Gran Pentagrama (Clave de Sol y Clave de Fa) con alteraciones, puntillos y tresillos', () => {
+    const staffTreble: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 0,
+      bbox: [20, 40, 700, 60],
+      lineSpacingPx: 10,
+      normSpacing: 10,
+    };
+    const staffBass: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 1,
+      bbox: [20, 140, 700, 60],
+      lineSpacingPx: 10,
+      normSpacing: 10,
+    };
+
+    // Pentagrama 1: Sol Mayor (*k[f#]), 4/4, compás 1: negra con puntillo Sol4, corchea Fa#4, tresillo de negras, blanca ligada
+    const trebleTokens = makeEventsFromSubtokens([
+      '*clefG2',
+      '<b>',
+      '*k[f#]',
+      '<b>',
+      '*M4/4',
+      '<b>',
+      '4.',
+      'g',
+      '<b>',
+      '8',
+      'f',
+      '#',
+      '<b>',
+      '6',
+      'a',
+      '<b>',
+      '6',
+      'b',
+      '<b>',
+      '6',
+      'cc',
+      '<b>',
+      '=',
+      '<b>',
+      '[',
+      '2',
+      'dd',
+      ';',
+      '<b>',
+      '2',
+      'r',
+      '<b>',
+      '==',
+    ]);
+
+    // Pentagrama 2: Clave de Fa (*clefF4), redonda Sol2 y redonda Re3
+    const bassTokens = makeEventsFromSubtokens([
+      '*clefF4',
+      '<b>',
+      '*k[f#]',
+      '<b>',
+      '*M4/4',
+      '<b>',
+      '1',
+      'GG',
+      '<b>',
+      '=',
+      '<b>',
+      '1',
+      'D',
+      '<b>',
+      '==',
+    ]);
+
+    const fragTreble = lineFragment(trebleTokens, staffTreble);
+    const fragBass = lineFragment(bassTokens, staffBass);
+
+    const ir = assembleIR([
+      { staff: staffTreble, elements: fragTreble },
+      { staff: staffBass, elements: fragBass },
+    ]);
+
+    expect(ir.parts).toHaveLength(2);
+    expect(ir.structure.recognized.keyFifths).toBe(1);
+    expect(ir.structure.recognized.time).toEqual({ num: 4, den: 4 });
+
+    const summary = convertOmrIrToScore(ir, {
+      title: 'Sonatina en Sol',
+      composer: 'Muzio Clementi',
+      tempo: 128,
+      lyrics: ['Sol', 'Fa', 'La', 'Si', 'Do', 'Re'],
+      chords: ['G', 'D7'],
+    });
+
+    const { score } = summary;
+    expect(score.title).toBe('Sonatina en Sol');
+    expect(score.composer).toBe('Muzio Clementi');
+    expect(score.tempo).toBe(128);
+    expect(score.isGrandStaff).toBe(true);
+    expect(score.staves).toHaveLength(2);
+    expect(score.staves[0].name).toBe('Mano Derecha');
+    expect(score.staves[1].name).toBe('Mano Izquierda');
+    expect(score.staves[0].clef).toBe('treble');
+    expect(score.staves[1].clef).toBe('bass');
+
+    const m1Items = score.staves[0].measures[0].items;
+    expect(m1Items[0]).toMatchObject({
+      type: 'note',
+      duration: 'q',
+      isDotted: true,
+      pitch: { step: 'G', octave: 4, accidental: null },
+      lyric: 'Sol',
+      chord: 'G',
+    });
+    expect(m1Items[1]).toMatchObject({
+      type: 'note',
+      duration: '8',
+      pitch: { step: 'F', octave: 4, accidental: '#' },
+    });
+    expect(m1Items[2]).toMatchObject({
+      type: 'note',
+      duration: 'q',
+      tuplet: { actual: 3, normal: 2 },
+    });
+
+    const m2Items = score.staves[0].measures[1].items;
+    expect(m2Items[0]).toMatchObject({
+      type: 'note',
+      duration: 'h',
+      isTied: true,
+      articulation: 'fermata',
+      pitch: { step: 'D', octave: 5, accidental: null },
+    });
+    expect(m2Items[1]).toMatchObject({
+      type: 'rest',
+      duration: 'h',
+    });
+    expect(score.staves[0].measures[1].barline).toBe('final');
+  });
+
+  it('ejecuta inferencia neuronal real con ONNX Runtime Web (omr-line.fp32.onnx) alcanzando 100% de precisión sobre la línea de referencia', async () => {
+    const modelPath = path.resolve(process.cwd(), 'public/omr/omr-line.fp32.onnx');
+    const vocabPath = path.resolve(process.cwd(), 'public/omr/vocab.json');
+    const samplePngPath = path.resolve(process.cwd(), 'src/omr/__tests__/fixtures/line.png');
+    const sampleJsonPath = path.resolve(process.cwd(), 'src/omr/__tests__/fixtures/line.json');
+
+    if (!fs.existsSync(modelPath) || !fs.existsSync(samplePngPath)) {
+      return;
+    }
+
+    // Decodificar PNG de 8-bit escala de grises
+    const buf = fs.readFileSync(samplePngPath);
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    const idatChunks: Buffer[] = [];
+    let offset = 8;
+    while (offset < buf.length) {
+      const len = buf.readUInt32BE(offset);
+      const type = buf.subarray(offset + 4, offset + 8).toString('ascii');
+      if (type === 'IDAT') idatChunks.push(buf.subarray(offset + 8, offset + 8 + len));
+      if (type === 'IEND') break;
+      offset += 12 + len;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(idatChunks));
+    const pixels = new Uint8Array(width * height);
+    const stride = width + 1;
+    const paeth = (a: number, b: number, c: number) => {
+      const p = a + b - c;
+      const pa = Math.abs(p - a);
+      const pb = Math.abs(p - b);
+      const pc = Math.abs(p - c);
+      if (pa <= pb && pa <= pc) return a;
+      if (pb <= pc) return b;
+      return c;
+    };
+    for (let y = 0; y < height; y++) {
+      const filter = raw[y * stride];
+      const rowStart = y * stride + 1;
+      const outRow = y * width;
+      for (let x = 0; x < width; x++) {
+        const byte = raw[rowStart + x];
+        const left = x > 0 ? pixels[outRow + x - 1] : 0;
+        const up = y > 0 ? pixels[outRow - width + x] : 0;
+        const upLeft = x > 0 && y > 0 ? pixels[outRow - width + x - 1] : 0;
+        let recon = byte;
+        if (filter === 1) recon = (byte + left) & 0xff;
+        else if (filter === 2) recon = (byte + up) & 0xff;
+        else if (filter === 3) recon = (byte + Math.floor((left + up) / 2)) & 0xff;
+        else if (filter === 4) recon = (byte + paeth(left, up, upLeft)) & 0xff;
+        pixels[outRow + x] = recon;
+      }
+    }
+
+    const meta = JSON.parse(fs.readFileSync(sampleJsonPath, 'utf8')) as {
+      line_spacing_px: number;
+      ground_truth_kern: string[];
+    };
+    const vocab = JSON.parse(fs.readFileSync(vocabPath, 'utf8')) as { tokens: string[] };
+    const i2w = i2wFromVocab(vocab.tokens);
+
+    const gray = grayFromBytes(pixels, width * height);
+    const norm = normalizeStaff(gray, width, height, meta.line_spacing_px, null);
+    const inverted = new Float32Array(norm.data.length);
+    for (let i = 0; i < norm.data.length; i++) {
+      inverted[i] = 1.0 - norm.data[i];
+    }
+
+    ort.env.wasm.numThreads = 1;
+    const modelBytes = new Uint8Array(fs.readFileSync(modelPath));
+    const session = await ort.InferenceSession.create(modelBytes, {
+      executionProviders: ['wasm'],
+    });
+
+    const tensor = new ort.Tensor('float32', inverted, [1, 1, norm.height, norm.width]);
+    const out = await session.run({ [session.inputNames[0]]: tensor });
+    const logitsTensor = out[session.outputNames[0]];
+    const T = logitsTensor.dims[1];
+    const C = logitsTensor.dims[2];
+    const events = decodeLine(logitsTensor.data as Float32Array, T, C, i2w);
+
+    // Reconstruir los registros **kern unidos por el separador <b>
+    const predictedKern: string[] = [];
+    let currentRecord: string[] = [];
+    for (const ev of events) {
+      if (ev.token === '<b>') {
+        if (currentRecord.length > 0) {
+          predictedKern.push(currentRecord.join(''));
+          currentRecord = [];
+        }
+      } else {
+        currentRecord.push(ev.token);
+      }
+    }
+    if (currentRecord.length > 0) {
+      predictedKern.push(currentRecord.join(''));
+    }
+
+    expect(predictedKern).toEqual(meta.ground_truth_kern);
+
+    const staffMeta: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 0,
+      bbox: [0, 0, width, height],
+      lineSpacingPx: meta.line_spacing_px,
+      normSpacing: 10,
+    };
+    const elements = lineFragment(events, staffMeta);
+    const ir = assembleIR([{ staff: staffMeta, elements }]);
+    const summary = convertOmrIrToScore(ir, { title: 'Test Real ONNX' });
+
+    expect(summary.notesCount).toBe(9);
+    expect(summary.measuresCount).toBe(6);
+    expect(summary.averageConfidence).toBeGreaterThanOrEqual(95);
+  }, 20000);
+});

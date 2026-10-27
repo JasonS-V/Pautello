@@ -1,0 +1,31 @@
+{
+  "source": "pdmx piece 0021737310, system 1, staff 0, rendered with verovio",
+  "license": "public domain (pdmx); rendering adds no rights",
+  "width_px": 2018,
+  "height_px": 181,
+  "line_spacing_px": 18.0,
+  "ground_truth_kern": [
+    "*clefG2",
+    "*k[]",
+    "=",
+    "4cc",
+    "8bL",
+    "8bJ",
+    "2a",
+    "=",
+    "2b",
+    "2r",
+    "=",
+    "1r",
+    "=",
+    "1r",
+    "=",
+    "1a",
+    "=",
+    "4f#",
+    "4f#",
+    "[2a",
+    "="
+  ],
+  "note": "ground truth in kern granularity. the model emits sub tokens plus a <b> separator; join_tokens in src/synth/tokens.py is the inverse."
+}

@@ -235,7 +235,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const handleExportSvg = async () => {
     try {
-      const blob = exportScoreToSvg();
+      const blob = exportScoreToSvg(score);
       const res = await saveFile(`${baseFileName}.svg`, blob, 'image/svg+xml');
       if (res.ok) {
         toast.success('SVG exportado', 'Gráfico vectorial listo para imprenta o ilustrador.');
@@ -251,7 +251,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const handleExportPng = async () => {
     try {
       setIsExportingPng(true);
-      const blob = await exportScoreToPng(2);
+      const blob = await exportScoreToPng(2, score);
       const res = await saveFile(`${baseFileName}.png`, blob, 'image/png');
       if (res.ok) {
         toast.success('Imagen PNG exportada', 'Imagen en alta definición (2x Retina) generada.');
@@ -441,7 +441,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           className="w-full py-2.5 px-4 rounded-xl border border-dashed border-slate-300 dark:border-studio-line hover:border-studio-accent dark:hover:border-studio-accent text-slate-600 dark:text-slate-300 hover:text-amber-700 dark:hover:text-studio-accent hover:bg-amber-50/40 dark:hover:bg-amber-950/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <Upload className="w-4 h-4" />
-          <span>Abrir e Importar Partitura (.musicxml, .mid, .json)</span>
+          <span>Abrir e Importar Partitura (.pdf, .png, .musicxml, .mid, .json)</span>
         </button>
       </div>
     </ModalBase>

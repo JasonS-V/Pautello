@@ -10,7 +10,8 @@ import react from '@vitejs/plugin-react';
  */
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self' file:",
-  "script-src 'self' file:",
+  "script-src 'self' 'wasm-unsafe-eval' file: blob:",
+  "worker-src 'self' file: blob:",
   "style-src 'self' 'unsafe-inline' file:",
   "img-src 'self' file: data: blob:",
   "font-src 'self' file: data:",
@@ -59,6 +60,9 @@ function buildServiceWorker(files: string[]): string {
 
 export default defineConfig({
   base: './',
+  optimizeDeps: {
+    exclude: ['onnxruntime-web'],
+  },
   plugins: [
     react(),
     {
@@ -109,6 +113,15 @@ export default defineConfig({
           }
           if (id.includes('/src/audio/')) {
             return 'audio';
+          }
+          if (id.includes('onnxruntime-web')) {
+            return 'omr-ort';
+          }
+          if (id.includes('pdfjs-dist')) {
+            return 'omr-pdf';
+          }
+          if (id.includes('/src/omr/')) {
+            return 'omr-engine';
           }
         },
       },

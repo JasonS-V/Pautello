@@ -80,12 +80,13 @@ export const es = {
   },
   import: {
     tooLargeTitle: 'El archivo es demasiado grande',
-    tooLargeMessage: 'El límite es de 8 MB. Prueba a dividir la obra o exportarla por partes.',
+    tooLargeMessage: 'El límite es de 16 MB. Prueba a dividir la obra o exportarla por partes.',
     failedTitle: 'No se pudo leer el archivo',
-    failedMessage: 'Revisa que sea MusicXML (.xml/.musicxml), MIDI (.mid) o una copia .json.',
-    pdfTitle: 'Los PDF no se pueden interpretar como música',
+    failedMessage:
+      'Revisa que sea PDF, imagen (.png/.jpg/.svg), MusicXML (.xml/.musicxml), MIDI (.mid) o una copia .json.',
+    pdfTitle: 'Reconocimiento óptico musical (OMR) activo',
     pdfMessage:
-      'Un PDF es una imagen del papel: no contiene las notas. Ábrelo en MuseScore, Finale o Sibelius y exporta MusicXML para importarlo aquí.',
+      'Los archivos PDF e imágenes se analizan localmente mediante el motor neuronal ONNX Runtime Web.',
     successTitle: 'Partitura importada',
     successMessage: 'Se detectaron el compás y la tonalidad automáticamente.',
   },

@@ -3,6 +3,7 @@ import { Score, Staff } from '../../types/music';
 import { TRANSPOSITION_PRESETS } from '../../utils/transposition';
 import { PageInfo as LayoutPage, SystemInfo } from '../../engraver/layout';
 import { Lightbulb } from '../ui/icons';
+import { formatEmbeddedScoreMarker } from '../../omr/scorePayloadCodec';
 
 export interface ScorePageChromeProps {
   score: Score;
@@ -60,8 +61,16 @@ const ScorePageChromeComponent: React.FC<ScorePageChromeProps> = ({
       ? 'Modo Ensamble: haz clic sobre cualquier pentagrama para ingresar notas en ese instrumento.'
       : 'Haz clic en el pentagrama para insertar notas. Usa las teclas A-G o el piano inferior.';
 
+  const embeddedPayload = formatEmbeddedScoreMarker(score);
+
   const titleBlock = (
     <div className="text-center pt-2 pb-6 border-b border-slate-100 mb-6">
+      <div
+        aria-hidden="true"
+        className="text-[0.1px] leading-none text-transparent select-none pointer-events-none overflow-hidden h-0 w-0 print:block print:h-auto print:w-auto"
+      >
+        {embeddedPayload}
+      </div>
       {isPartView && (
         <div className="inline-block mb-1.5 px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wider uppercase bg-blue-100 text-blue-700 border border-blue-200">
           Particella: {activeStaffName || 'Instrumento'} {transpositionLabel}

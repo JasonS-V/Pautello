@@ -1,3 +1,4 @@
 allowBuilds:
   electron-winstaller: true
   esbuild: true
+  protobufjs: false
