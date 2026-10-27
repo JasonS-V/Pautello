@@ -12,10 +12,18 @@ import {
   TimeSignature,
   TupletInfo,
 } from '../types/music';
-import { pitchToMidi } from '../constants/pitches';
+import { getItemBeats, pitchToMidi } from '../constants/pitches';
+import { beatsFromTimeSignature, getMeasureTimings } from '../utils/measureTiming';
 import { detectKeyFromScore } from '../utils/keyDetection';
 import { normalizeScore } from '../utils/scoreSchema';
-import { OmrClefIR, OmrDurationIR, OmrPitchIR, OmrScoreIR } from './omrDecode';
+import {
+  OmrClefIR,
+  OmrDurationIR,
+  OmrPitchIR,
+  OmrScoreIR,
+  OmrSourceSpan,
+  OmrWarning,
+} from './omrDecode';
 
 export interface OmrMetadataHints {
   title?: string;
@@ -33,10 +41,37 @@ export interface OmrMetadataHints {
 
 export interface OmrConversionSummary {
   score: Score;
+  metadataHints: OmrMetadataHints;
+  warnings: OmrWarning[];
+  proposals: OmrMeasureProposal[];
+  report: {
+    sourceEvents: number;
+    representedEvents: number;
+    pendingEvents: number;
+    unparseableRecords: number;
+  };
+  sourceLinks: OmrSourceLink[];
   averageConfidence: number;
   measuresCount: number;
   notesCount: number;
   stavesCount: number;
+}
+
+export interface OmrMeasureProposal {
+  staffId: string;
+  measureId: string;
+  reason: string;
+  replacement: Measure[];
+}
+
+export interface OmrSourceLink {
+  sourcePart: number;
+  sourceMeasure: number;
+  sourceEvent: number;
+  src?: OmrSourceSpan;
+  staffId: string | null;
+  measureId: string | null;
+  itemId: string;
 }
 
 const FIFTHS_TO_MAJOR: Readonly<Record<number, KeySignature>> = {
@@ -55,22 +90,6 @@ const FIFTHS_TO_MAJOR: Readonly<Record<number, KeySignature>> = {
   [-5]: 'Db',
   [-6]: 'Gb',
   [-7]: 'Cb',
-};
-
-const FIFTHS_TO_MINOR: Readonly<Record<number, KeySignature>> = {
-  0: 'Am',
-  1: 'Em',
-  2: 'Bm',
-  3: 'F#m',
-  4: 'C#m',
-  5: 'G#m',
-  6: 'D#m',
-  [-1]: 'Dm',
-  [-2]: 'Gm',
-  [-3]: 'Cm',
-  [-4]: 'Fm',
-  [-5]: 'Bbm',
-  [-6]: 'Ebm',
 };
 
 function mapDuration(dur: OmrDurationIR): {
@@ -94,13 +113,13 @@ function mapDuration(dur: OmrDurationIR): {
     case '32':
       return { duration: '32', isDotted };
     case '3':
-      return { duration: 'h', tuplet: { actual: 3, normal: 2 } };
+      return { duration: 'h', isDotted, tuplet: { actual: 3, normal: 2 } };
     case '6':
-      return { duration: 'q', tuplet: { actual: 3, normal: 2 } };
+      return { duration: 'q', isDotted, tuplet: { actual: 3, normal: 2 } };
     case '12':
-      return { duration: '8', tuplet: { actual: 3, normal: 2 } };
+      return { duration: '8', isDotted, tuplet: { actual: 3, normal: 2 } };
     case '24':
-      return { duration: '16', tuplet: { actual: 3, normal: 2 } };
+      return { duration: '16', isDotted, tuplet: { actual: 3, normal: 2 } };
     default:
       return { duration: 'q', isDotted };
   }
@@ -116,7 +135,7 @@ function mapPitch(p: OmrPitchIR): Pitch {
 
   return {
     step: p.step,
-    octave: Math.max(1, Math.min(7, p.octave)),
+    octave: p.octave,
     accidental,
   };
 }
@@ -150,7 +169,7 @@ function inferClefFromItems(measures: Measure[]): Clef {
   midis.sort((a, b) => a - b);
   const median = midis[Math.floor(midis.length / 2)];
   // Do central (C4) es MIDI 60. El registro de clave de Fa se centra en Re3 (50) y Sol2 (43).
-  // Notas con mediana <= 60 pertenecen inconfundiblemente a la clave de Fa.
+  // El registro solo aporta una sugerencia, nunca sustituye la clave observada.
   return median <= 60 ? 'bass' : 'treble';
 }
 
@@ -159,168 +178,139 @@ function itemDurationToBeats(item: {
   isDotted?: boolean;
   tuplet?: TupletInfo;
 }): number {
-  let base = 1.0;
-  switch (item.duration) {
-    case 'w':
-      base = 4.0;
-      break;
-    case 'h':
-      base = 2.0;
-      break;
-    case 'q':
-      base = 1.0;
-      break;
-    case '8':
-      base = 0.5;
-      break;
-    case '16':
-      base = 0.25;
-      break;
-    case '32':
-      base = 0.125;
-      break;
-  }
-  if (item.isDotted) {
-    base *= 1.5;
-  }
-  if (item.tuplet && item.tuplet.actual > 0) {
-    base *= item.tuplet.normal / item.tuplet.actual;
-  }
-  return base;
+  return getItemBeats(item.duration, item.isDotted, item.tuplet);
 }
 
-function defaultStaffNames(count: number, clefs: Clef[]): Array<{ name: string; shortName: string }> {
-  if (count === 1) {
-    return clefs[0] === 'bass'
-      ? [{ name: 'Bajo', shortName: 'B.' }]
-      : [{ name: 'Voz / Melodía', shortName: 'Voz' }];
-  }
-  if (count === 2 && clefs[0] === 'treble' && clefs[1] === 'bass') {
-    return [
-      { name: 'Mano Derecha', shortName: 'M.D.' },
-      { name: 'Mano Izquierda', shortName: 'M.I.' },
-    ];
-  }
-  if (count === 4) {
-    return [
-      { name: 'Soprano', shortName: 'S.' },
-      { name: 'Contralto', shortName: 'A.' },
-      { name: 'Tenor', shortName: 'T.' },
-      { name: 'Bajo', shortName: 'B.' },
-    ];
-  }
-  return Array.from({ length: count }, (_, i) => ({
-    name: `Pentagrama ${i + 1}`,
-    shortName: `P.${i + 1}`,
-  }));
-}
-
+/** Solo produce una alternativa; el reconocimiento conserva los compases observados. */
 export function reconcileMeasuresForTimeSignature(
   rawMeasures: Measure[],
   timeSignature: TimeSignature
 ): Measure[] {
-  const targetBeats = timeSignature.beats * (4 / timeSignature.beatType);
-  const outMeasures: Measure[] = [];
-
-  for (let mIdx = 0; mIdx < rawMeasures.length; mIdx++) {
-    const rm = rawMeasures[mIdx];
-    const items = rm.items;
-    if (items.length === 0) {
-      outMeasures.push(rm);
-      continue;
-    }
-
-    // Caso 1: única blanca en 3/4 -> promover a blanca con puntillo (3 tiempos de compás completo)
-    if (
-      targetBeats === 3 &&
-      items.length === 1 &&
-      items[0].type === 'note' &&
-      items[0].duration === 'h' &&
-      !items[0].isDotted
-    ) {
-      outMeasures.push({
-        ...rm,
-        id: `${rm.id}-rec`,
-        items: [{ ...items[0], isDotted: true }],
-      });
-      continue;
-    }
-
-    // Caso 2: único silencio de blanca en 3/4 -> promover a silencio de blanca con puntillo
-    if (
-      targetBeats === 3 &&
-      items.length === 1 &&
-      items[0].type === 'rest' &&
-      items[0].duration === 'h' &&
-      !items[0].isDotted
-    ) {
-      outMeasures.push({
-        ...rm,
-        id: `${rm.id}-rec`,
-        items: [{ ...items[0], isDotted: true }],
-      });
-      continue;
-    }
-
-    // Calcular suma total de tiempos del compás
-    let measureBeats = 0;
-    for (const it of items) {
-      measureBeats += itemDurationToBeats(it);
-    }
-
-    // Si el compás cabe normalmente dentro de la capacidad métrica, conservarlo
-    if (measureBeats <= targetBeats + 0.35) {
-      outMeasures.push(rm);
-      continue;
-    }
-
-    // Si sobrepasa ampliamente la métrica (barras de compás omitidas por el CTC):
-    // dividir en compases individuales según la capacidad métrica
-    let currentBatch: ScoreItem[] = [];
-    let currentBatchBeats = 0;
-    let subIdx = 0;
-
-    for (let itIdx = 0; itIdx < items.length; itIdx++) {
-      const it = items[itIdx];
-      if (
-        targetBeats === 3 &&
-        it.type === 'note' &&
-        it.duration === 'h' &&
-        !it.isDotted &&
-        currentBatchBeats === 0
-      ) {
-        currentBatch.push({ ...it, isDotted: true });
-        currentBatchBeats += 3.0;
-      } else {
-        const itBeats = itemDurationToBeats(it);
-        currentBatch.push(it);
-        currentBatchBeats += itBeats;
+  let localTime = timeSignature;
+  return rawMeasures.flatMap((measure) => {
+    localTime = measure.timeSignatureChange ?? localTime;
+    const capacity = beatsFromTimeSignature(localTime);
+    if (measure.isAnacrusis || measure.items.some((item) => item.voice === 2)) return [measure];
+    const groups: ScoreItem[][] = [];
+    let batch: ScoreItem[] = [];
+    let beats = 0;
+    for (const item of measure.items) {
+      beats += itemDurationToBeats(item);
+      if (beats > capacity + 1e-6) return [measure];
+      batch.push(item);
+      if (Math.abs(beats - capacity) < 1e-6) {
+        groups.push(batch);
+        batch = [];
+        beats = 0;
       }
+    }
+    if (batch.length || groups.length < 2) return [measure];
+    const {
+      barline,
+      repeatEnd,
+      repeatCount,
+      systemBreak,
+      pageBreak,
+      navigationMark,
+      caesura,
+      breathMark,
+      ...start
+    } = measure;
+    return groups.map((items, i) => ({
+      ...(i === 0
+        ? {
+            ...start,
+            navigationMark:
+              navigationMark === 'segno' || navigationMark === 'coda' ? navigationMark : undefined,
+          }
+        : {}),
+      ...(i === groups.length - 1
+        ? {
+            barline,
+            repeatEnd,
+            repeatCount,
+            systemBreak,
+            pageBreak,
+            navigationMark:
+              navigationMark === 'segno' || navigationMark === 'coda' ? undefined : navigationMark,
+            caesura,
+            breathMark,
+          }
+        : {}),
+      id: `${measure.id}-s${i}`,
+      items,
+    }));
+  });
+}
 
-      if (currentBatchBeats >= targetBeats - 0.25) {
-        const isLastSub = itIdx === items.length - 1;
-        outMeasures.push({
-          id: `${rm.id}-s${subIdx++}`,
-          items: currentBatch,
-          barline: isLastSub ? rm.barline : undefined,
-          systemBreak: isLastSub ? rm.systemBreak : undefined,
+export function inspectOmrMeasures(
+  score: Score,
+  sourceLinks: OmrSourceLink[] = []
+): { warnings: OmrWarning[]; proposals: OmrMeasureProposal[] } {
+  const warnings: OmrWarning[] = [];
+  const proposals: OmrMeasureProposal[] = [];
+  for (const staff of score.staves) {
+    const timings = getMeasureTimings({ ...score, staves: [staff] });
+    staff.measures.forEach((measure, mIdx) => {
+      if (measure.items.some((item) => item.id.startsWith('omr-empty-rest-'))) return;
+      const found = measure.items.reduce((sum, item) => sum + itemDurationToBeats(item), 0);
+      const expected = timings[mIdx].beatsPerMeasure;
+      if (Math.abs(found - expected) < 1e-6) return;
+      const src = sourceLinks.find((link) => link.measureId === measure.id)?.src;
+      warnings.push({
+        code: found > expected ? 'measure-overfull' : 'measure-underfull',
+        severity: 'warning',
+        provenance: 'observed',
+        src,
+        page: src?.page,
+        system: src?.system,
+        staff: src?.staff,
+        found,
+        expected,
+        message: `Compás ${mIdx + 1}: ${found} tiempos leídos de ${expected}; se conserva sin completar ni dividir.`,
+      });
+      const replacement = reconcileMeasuresForTimeSignature([measure], timings[mIdx].timeSignature);
+      if (replacement.length > 1)
+        proposals.push({
+          staffId: staff.id,
+          measureId: measure.id,
+          replacement,
+          reason: `Los ${found} tiempos admiten ${replacement.length} grupos exactos de ${expected}; posible barra omitida, requiere revisión visual.`,
         });
-        currentBatch = [];
-        currentBatchBeats = 0;
-      }
-    }
-
-    if (currentBatch.length > 0) {
-      outMeasures.push({
-        id: `${rm.id}-s${subIdx}`,
-        items: currentBatch,
-        barline: rm.barline,
-        systemBreak: rm.systemBreak,
-      });
-    }
+    });
   }
 
-  return outMeasures;
+  return { warnings, proposals };
+}
+
+export function applyOmrMeasureProposals(score: Score, selectedMeasureIds: string[]): Score {
+  const selected = new Set(selectedMeasureIds);
+  const proposals = new Map(
+    inspectOmrMeasures(score).proposals.map((proposal) => [proposal.measureId, proposal])
+  );
+  return {
+    ...score,
+    staves: score.staves.map((staff) => ({
+      ...staff,
+      measures: staff.measures.flatMap((measure) =>
+        selected.has(measure.id) ? (proposals.get(measure.id)?.replacement ?? [measure]) : [measure]
+      ),
+    })),
+  };
+}
+
+export function refreshOmrSourceLinks(score: Score, links: OmrSourceLink[]): OmrSourceLink[] {
+  const targets = new Map<string, { staffId: string; measureId: string }>();
+  for (const staff of score.staves)
+    for (const measure of staff.measures)
+      for (const item of measure.items) {
+        targets.set(item.id, { staffId: staff.id, measureId: measure.id });
+      }
+  return links.map((link) => ({
+    ...link,
+    staffId: targets.get(link.itemId)?.staffId ?? null,
+    measureId: targets.get(link.itemId)?.measureId ?? null,
+  }));
 }
 
 /**
@@ -332,181 +322,197 @@ export function convertOmrIrToScore(
 ): OmrConversionSummary {
   const confidences: number[] = [];
   let notesCount = 0;
-
-  const hintText = [
-    hints.title,
-    hints.subtitle,
-    hints.composer,
-    hints.lyricist,
-    hints.genre,
-    hints.fullText,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  const isBassHint =
-    /\b(bajo|bass|contrabajo|double\s*bass|guitarron|guitarr[oó]n|cello|violonch?elo|tuba|fagot|bassoon|tromb[oó]n|trombone|bar[ií]tono|baritone|clave\s+de\s+fa)\b/i.test(
-      hintText
-    );
-  const isTripleMeterHint =
-    Boolean(hints.timeSignature && hints.timeSignature.beats === 3 && hints.timeSignature.beatType === 4) ||
-    /\b(valseada|vals|waltz|3\/4)\b/i.test(hintText);
-
-  // Análisis de registro de notas y métrica global
-  let totalNotesAnalyzed = 0;
-  let bassRegisterNotes = 0;
-  let tripleBeatsVote = 0;
-  let dupleBeatsVote = 0;
-  let hasThreeQuarterNotesMeasure = false;
-
-  for (const part of ir.parts) {
-    for (const m of part.measures) {
-      let mBeats = 0;
-      let quarterCount = 0;
-      for (const ev of m.events) {
-        const { duration, isDotted } = mapDuration(ev.duration);
-        mBeats += itemDurationToBeats({ duration, isDotted });
-        if (duration === 'q' && !isDotted) quarterCount++;
-        if (ev.kind === 'note' && (ev.pitches || ev.pitch)) {
-          const p = ev.pitches ? ev.pitches[0] : ev.pitch!;
-          const midi = pitchToMidi(mapPitch(p));
-          totalNotesAnalyzed++;
-          if (midi <= 60) bassRegisterNotes++;
-        }
-      }
-      if (quarterCount === 3) {
-        hasThreeQuarterNotesMeasure = true;
-      }
-      if (
-        quarterCount === 3 ||
-        Math.abs(mBeats - 3.0) < 0.35 ||
-        (mBeats >= 5.5 && mBeats <= 6.5) ||
-        (mBeats >= 8.5 && mBeats <= 9.5)
-      ) {
-        tripleBeatsVote++;
-      } else if (Math.abs(mBeats - 2.0) < 0.35 || Math.abs(mBeats - 4.0) < 0.35) {
-        dupleBeatsVote++;
-      }
-    }
-  }
-
-  const isBassRegisterDominant =
-    totalNotesAnalyzed > 0 && bassRegisterNotes / totalNotesAnalyzed >= 0.65;
-
+  const warnings: OmrWarning[] = [];
   const rawTime = ir.structure.recognized.time;
-  let timeSignature: TimeSignature;
-  if (hints.timeSignature) {
-    timeSignature = hints.timeSignature;
-  } else if (
-    isTripleMeterHint ||
-    (hasThreeQuarterNotesMeasure && rawTime?.num === 2) ||
-    (tripleBeatsVote >= 3 && tripleBeatsVote > dupleBeatsVote)
-  ) {
-    timeSignature = { beats: 3, beatType: 4 };
-  } else if (
-    rawTime &&
-    rawTime.num >= 1 &&
-    rawTime.num <= 16 &&
-    [2, 4, 8, 16].includes(rawTime.den)
-  ) {
-    timeSignature = { beats: rawTime.num, beatType: rawTime.den };
-  } else {
-    timeSignature = { beats: 4, beatType: 4 };
-  }
-
+  const validTime =
+    rawTime && rawTime.num >= 1 && rawTime.num <= 16 && [2, 4, 8, 16].includes(rawTime.den);
+  const timeSignature: TimeSignature = validTime
+    ? { beats: rawTime.num, beatType: rawTime.den }
+    : (hints.timeSignature ?? { beats: 4, beatType: 4 });
   const recognizedFifths = ir.structure.recognized.keyFifths;
-  const clampedFifths =
-    recognizedFifths !== null && recognizedFifths !== undefined
-      ? Math.max(-7, Math.min(7, recognizedFifths))
-      : null;
+  const recognizedKey = recognizedFifths !== null ? FIFTHS_TO_MAJOR[recognizedFifths] : undefined;
+  const initialKey = recognizedKey ?? hints.keySignature ?? 'C';
+  if (
+    (validTime &&
+      hints.timeSignature &&
+      (rawTime.num !== hints.timeSignature.beats ||
+        rawTime.den !== hints.timeSignature.beatType)) ||
+    (recognizedKey && hints.keySignature && recognizedKey !== hints.keySignature)
+  ) {
+    warnings.push({
+      code: 'metadata-conflict',
+      severity: 'warning',
+      provenance: 'inferred',
+      message:
+        'Las pistas editoriales discrepan de atributos leídos; se conservan la métrica y armadura observadas.',
+    });
+  }
+  if (!validTime)
+    warnings.push({
+      code: 'estimated-time',
+      severity: 'warning',
+      provenance: 'inferred',
+      message: `Métrica no reconocida: se usa ${timeSignature.beats}/${timeSignature.beatType} como valor provisional.`,
+    });
+  if (!recognizedKey)
+    warnings.push({
+      code: 'estimated-key',
+      severity: 'warning',
+      provenance: 'inferred',
+      message: `Armadura no reconocida: se usa ${initialKey} como valor provisional.`,
+    });
+  if (!hints.tempo)
+    warnings.push({
+      code: 'estimated-tempo',
+      severity: 'warning',
+      provenance: 'inferred',
+      message: 'Tempo no reconocido: se usa negra = 120 como valor provisional.',
+    });
 
-  let lyricCursor = 0;
-  let chordCursor = 0;
+  if (hints.lyrics?.length || hints.chords?.length)
+    warnings.push({
+      code: 'unanchored-text',
+      severity: 'warning',
+      provenance: 'unsupported',
+      message:
+        'Texto/cifrado sin anclaje temporal: conservado en las pistas editoriales para revisión, sin asignarlo a notas por su orden.',
+    });
 
   const staves: Staff[] = ir.parts.map((part, pIdx) => {
-    let explicitClef: Clef | null = mapClef(undefined, ir.structure.recognized.clefs[pIdx]);
-    if (isBassHint || (ir.parts.length === 1 && isBassRegisterDominant)) {
-      explicitClef = 'bass';
-    }
+    const firstClef = part.measures.find((m) => m.attributes?.clef)?.attributes?.clef;
+    const explicitClef = mapClef(firstClef, ir.structure.recognized.clefs[pIdx]);
     let carryRepeatStart = false;
 
     const rawMeasures: Measure[] = part.measures.map((mIr, mIdx) => {
-      if (!explicitClef && mIr.attributes?.clef) {
-        const c = mapClef(mIr.attributes.clef, null);
-        if (c === 'bass' || !isBassRegisterDominant) {
-          explicitClef = c;
-        }
+      const localClef = mIr.attributes?.clef;
+      if (
+        localClef &&
+        (localClef.octaveChange !== 0 ||
+          !(
+            (localClef.sign === 'G' && localClef.line === 2) ||
+            (localClef.sign === 'F' && localClef.line === 4) ||
+            (localClef.sign === 'C' && localClef.line === 3)
+          ) ||
+          (mIdx > 0 && mapClef(localClef, null) !== explicitClef))
+      ) {
+        warnings.push({
+          code: 'unsupported-clef-change',
+          severity: 'warning',
+          provenance: 'unsupported',
+          src: mIr.attributeEvents?.find((e) => e.clef)?.src,
+          message:
+            'La clave local, su línea u octavación no se puede representar fielmente; se conserva en el IR.',
+        });
       }
-
-      const items: ScoreItem[] = mIr.events.map((ev, evIdx) => {
+      const items: ScoreItem[] = mIr.events.flatMap((ev, evIdx): ScoreItem[] => {
+        const pitches = ev.pitches?.length ? ev.pitches : ev.pitch ? [ev.pitch] : [];
+        const unsupported =
+          !['1', '2', '4', '8', '16', '32', '3', '6', '12', '24'].includes(ev.duration.base) ||
+          ev.duration.dots > 1 ||
+          ev.duration.dots < 0 ||
+          (ev.kind === 'note' &&
+            (!pitches.length ||
+              pitches.some(
+                (p) =>
+                  p.octave < 1 ||
+                  p.octave > 7 ||
+                  !Number.isInteger(p.octave) ||
+                  !'CDEFGAB'.includes(p.step) ||
+                  !Number.isInteger(p.alter) ||
+                  Math.abs(p.alter) > 2
+              )));
+        if (unsupported) {
+          warnings.push({
+            code: 'unsupported-event',
+            severity: 'error',
+            provenance: 'unsupported',
+            src: ev.src,
+            tokens: ev.tokens,
+            message:
+              'Evento pendiente: altura o duración no representable sin pérdida; se conserva en el IR y no se sustituye por otra nota.',
+          });
+          return [];
+        }
         confidences.push(ev.confidence);
         const { duration, isDotted, tuplet } = mapDuration(ev.duration);
 
         if (ev.kind === 'rest') {
-          return {
-            id: `omr-rest-${pIdx}-${mIdx}-${evIdx}`,
-            type: 'rest',
-            duration,
-            isDotted,
-            tuplet,
-          };
+          return [
+            {
+              id: `omr-rest-${pIdx}-${mIdx}-${evIdx}`,
+              type: 'rest',
+              duration,
+              isDotted,
+              tuplet,
+              articulation: ev.fermata ? 'fermata' : undefined,
+            },
+          ];
         }
 
         notesCount++;
-        const mappedPitches =
-          ev.pitches && ev.pitches.length > 0
-            ? ev.pitches.map(mapPitch)
-            : ev.pitch
-              ? [mapPitch(ev.pitch)]
-              : [{ step: 'C' as const, octave: 4, accidental: null }];
+        const mappedPitches = pitches.map(mapPitch);
 
-        const isTied = ev.tie === 'start' ? true : undefined;
-        const lyric =
-          pIdx === 0 && hints.lyrics && lyricCursor < hints.lyrics.length
-            ? hints.lyrics[lyricCursor++]
-            : undefined;
-        const chord =
-          pIdx === 0 && evIdx === 0 && hints.chords && chordCursor < hints.chords.length
-            ? hints.chords[chordCursor++]
-            : undefined;
-
-        return {
-          id: `omr-note-${pIdx}-${mIdx}-${evIdx}`,
-          type: 'note',
-          pitch: mappedPitches[0],
-          pitches: mappedPitches,
-          duration,
-          isDotted,
-          tuplet,
-          isTied,
-          slur: ev.slur,
-          articulation: ev.fermata ? 'fermata' : undefined,
-          lyric,
-          chord,
-        };
+        const isTied = ev.tie === 'start' || ev.tie === 'continue' ? true : undefined;
+        return [
+          {
+            id: `omr-note-${pIdx}-${mIdx}-${evIdx}`,
+            type: 'note',
+            pitch: mappedPitches[0],
+            pitches: mappedPitches,
+            duration,
+            isDotted,
+            tuplet,
+            isTied,
+            slur: ev.slur,
+            articulation: ev.fermata ? 'fermata' : undefined,
+          },
+        ];
       });
 
-      const finalItems: ScoreItem[] =
-        items.length > 0
-          ? items
-          : [
-              {
-                id: `omr-empty-rest-${pIdx}-${mIdx}`,
-                type: 'rest',
-                duration: 'w',
-              },
-            ];
+      const finalItems: ScoreItem[] = items.length
+        ? items
+        : [{ id: `omr-empty-rest-${pIdx}-${mIdx}`, type: 'rest', duration: 'w' }];
+      if (!items.length)
+        warnings.push({
+          code: 'empty-measure-placeholder',
+          severity: 'error',
+          provenance: 'modified',
+          src: mIr.events[0]?.src ?? mIr.leftBarline?.src ?? mIr.barline?.src,
+          message: `Compás ${mIdx + 1} sin eventos representables: el silencio mostrado es un marcador del editor, no música reconocida.`,
+        });
 
       let barline: BarlineType | undefined = undefined;
-      let repeatStart = carryRepeatStart ? true : undefined;
+      const repeatStart =
+        carryRepeatStart || ['repeat-start', 'repeat-both'].includes(mIr.leftBarline?.type ?? '')
+          ? true
+          : undefined;
       let repeatEnd: boolean | undefined = undefined;
       carryRepeatStart = false;
 
       const bType = mIr.barline?.type;
+      if (
+        bType &&
+        ![
+          'regular',
+          'double',
+          'final',
+          'repeat-start',
+          'repeat-end',
+          'final-repeat-end',
+          'repeat-both',
+        ].includes(bType)
+      ) {
+        warnings.push({
+          code: 'unsupported-barline',
+          severity: 'warning',
+          provenance: 'unsupported',
+          src: mIr.barline?.src,
+          message: `Barra ${bType} conservada en el IR; su estilo no se representa en el editor.`,
+        });
+      }
       if (bType === 'double') barline = 'double';
       else if (bType === 'final') barline = 'final';
-      else if (bType === 'repeat-start') repeatStart = true;
+      else if (bType === 'repeat-start') carryRepeatStart = true;
       else if (bType === 'repeat-end' || bType === 'final-repeat-end') {
         repeatEnd = true;
         if (bType === 'final-repeat-end') barline = 'final';
@@ -515,26 +521,42 @@ export function convertOmrIrToScore(
         carryRepeatStart = true;
       }
 
-      let timeSignatureChange: TimeSignature | undefined = undefined;
+      const localTime = mIr.attributes?.time;
+      const timeSignatureChange: TimeSignature | undefined =
+        localTime &&
+        (mIdx > 0 ||
+          localTime.num !== timeSignature.beats ||
+          localTime.den !== timeSignature.beatType) &&
+        localTime.num >= 1 &&
+        localTime.num <= 16 &&
+        [2, 4, 8, 16].includes(localTime.den)
+          ? { beats: localTime.num, beatType: localTime.den }
+          : undefined;
       if (
-        mIdx > 0 &&
-        mIr.attributes?.time &&
-        mIr.attributes.time.num >= 1 &&
-        [2, 4, 8, 16].includes(mIr.attributes.time.den)
-      ) {
-        if (
-          mIr.attributes.time.num !== timeSignature.beats ||
-          mIr.attributes.time.den !== timeSignature.beatType
-        ) {
-          timeSignatureChange = {
-            beats: mIr.attributes.time.num,
-            beatType: mIr.attributes.time.den,
-          };
-        }
-      }
+        localTime &&
+        (localTime.num < 1 || localTime.num > 16 || ![2, 4, 8, 16].includes(localTime.den))
+      )
+        warnings.push({
+          code: 'unsupported-time',
+          severity: 'warning',
+          provenance: 'unsupported',
+          src: mIr.attributeEvents?.find((e) => e.time)?.src,
+          message: 'Métrica local no representable: conservada en el IR para revisión.',
+        });
+      const localFifths = mIr.attributes?.keyFifths;
+      if (localFifths !== undefined && !FIFTHS_TO_MAJOR[localFifths])
+        warnings.push({
+          code: 'unsupported-key',
+          severity: 'warning',
+          provenance: 'unsupported',
+          src: mIr.attributeEvents?.find((e) => e.keyFifths !== undefined)?.src,
+          message: 'Armadura fuera del rango representable: conservada en el IR para revisión.',
+        });
 
       const isLastMeasureOfSystem =
-        mIdx === part.measures.length - 1 || part.measures[mIdx + 1]?.system !== mIr.system;
+        mIdx === part.measures.length - 1 ||
+        part.measures[mIdx + 1]?.system !== mIr.system ||
+        part.measures[mIdx + 1]?.page !== mIr.page;
 
       return {
         id: `omr-meas-${pIdx}-${mIdx}`,
@@ -543,56 +565,62 @@ export function convertOmrIrToScore(
         repeatStart,
         repeatEnd,
         timeSignatureChange,
+        keySignatureChange:
+          localFifths !== undefined && (mIdx > 0 || FIFTHS_TO_MAJOR[localFifths] !== initialKey)
+            ? FIFTHS_TO_MAJOR[localFifths]
+            : undefined,
+        pageBreak:
+          mIdx < part.measures.length - 1 && part.measures[mIdx + 1]?.page !== mIr.page
+            ? true
+            : undefined,
         systemBreak: isLastMeasureOfSystem ? true : undefined,
       };
     });
 
-    // Reconciliación métrica y división de compases
-    const measures = reconcileMeasuresForTimeSignature(rawMeasures, timeSignature);
+    const measures = rawMeasures;
 
-    // Validación estricta de ligaduras de prolongación:
-    // Elimina todas las ligaduras espurias generadas por el modelo entre alturas distintas o sin pariente
-    const allNotes: Array<{ note: ScoreItem & { type: 'note' } }> = [];
-    for (const m of measures) {
-      for (const it of m.items) {
-        if (it.type === 'note' && it.pitch) {
-          allNotes.push({ note: it as ScoreItem & { type: 'note' } });
-        }
-      }
-    }
+    const stream = measures.flatMap((m) => m.items);
+    const pitchKey = (item: ScoreItem) =>
+      (item.pitches ?? (item.pitch ? [item.pitch] : []))
+        .map((p) => `${p.step}/${p.octave}/${p.accidental === 'n' ? '' : (p.accidental ?? '')}`)
+        .sort()
+        .join('|');
+    const itemsById = new Map(stream.map((item) => [item.id, item]));
+    const sourceStream = part.measures.flatMap((m, mi) =>
+      m.events.map((event, ei) => ({
+        event,
+        item: itemsById.get(`omr-${event.kind}-${pIdx}-${mi}-${ei}`),
+      }))
+    );
+    sourceStream.forEach(({ item, event }, index) => {
+      if (!item?.isTied) return;
+      const next = sourceStream[index + 1]?.item;
+      if (
+        next?.type === 'note' &&
+        (item.pitches?.length ?? 1) === 1 &&
+        pitchKey(item) === pitchKey(next)
+      )
+        return;
+      item.isTied = undefined;
+      warnings.push({
+        code: 'invalid-tie',
+        severity: 'warning',
+        provenance: 'unsupported',
+        src: event?.src,
+        tokens: event?.tokens,
+        message:
+          'Ligadura sin continuación adyacente de todas las alturas en la misma voz; relación conservada en el IR para revisión.',
+      });
+    });
 
-    for (let i = 0; i < allNotes.length; i++) {
-      const current = allNotes[i].note;
-      if (!current.isTied) continue;
-
-      const next = allNotes[i + 1]?.note;
-      if (next && next.pitch && current.pitch) {
-        const sameStep = current.pitch.step === next.pitch.step;
-        const sameOctave = current.pitch.octave === next.pitch.octave;
-        const sameAcc = (current.pitch.accidental || null) === (next.pitch.accidental || null);
-
-        if (!sameStep || !sameOctave || !sameAcc) {
-          // Alturas distintas: es imposible que sea una ligadura de prolongación entre notas diferentes.
-          // Descartar el falso positivo del modelo neuronal.
-          current.isTied = undefined;
-        }
-      }
-    }
-
-    // Filtrar compases finales vacíos residuales tras la última barra si no tienen notas reales
-    while (
-      measures.length > 1 &&
-      measures[measures.length - 1].items.length === 1 &&
-      measures[measures.length - 1].items[0].type === 'rest' &&
-      measures[measures.length - 1].items[0].id.startsWith('omr-empty-rest-')
-    ) {
-      measures.pop();
-    }
-
-    const clef =
-      explicitClef && (explicitClef === 'bass' || !isBassRegisterDominant)
-        ? explicitClef
-        : inferClefFromItems(measures);
+    const clef = explicitClef ?? 'treble';
+    if (!explicitClef)
+      warnings.push({
+        code: 'estimated-clef',
+        severity: 'warning',
+        provenance: 'inferred',
+        message: `Parte ${pIdx + 1}: clave no reconocida; se usa Sol provisionalmente. El registro sugiere ${inferClefFromItems(measures) === 'bass' ? 'Fa' : 'Sol'}, requiere confirmación.`,
+      });
     return {
       id: `staff-omr-${pIdx + 1}`,
       name: part.label || `Pentagrama ${pIdx + 1}`,
@@ -623,31 +651,15 @@ export function convertOmrIrToScore(
     });
   }
 
-  // Igualar longitud de compases entre todos los pentagramas del sistema
   const maxMeasures = Math.max(1, ...staves.map((s) => s.measures.length));
-  for (let sIdx = 0; sIdx < staves.length; sIdx++) {
-    const st = staves[sIdx];
-    while (st.measures.length < maxMeasures) {
-      const mIdx = st.measures.length;
-      st.measures.push({
-        id: `omr-pad-meas-${sIdx}-${mIdx}`,
-        items: [{ id: `omr-pad-rest-${sIdx}-${mIdx}`, type: 'rest', duration: 'w' }],
-      });
-    }
-  }
-
-  // Asignar nombres canónicos según plantilla instrumental
-  const names = defaultStaffNames(
-    staves.length,
-    staves.map((s) => s.clef)
-  );
-  staves.forEach((st, idx) => {
-    st.name = names[idx].name;
-    st.shortName = names[idx].shortName;
-  });
-
-  const isGrandStaff =
-    staves.length === 2 && staves[0].clef === 'treble' && staves[1].clef === 'bass';
+  if (staves.some((s) => s.measures.length !== maxMeasures))
+    warnings.push({
+      code: 'part-alignment-uncertain',
+      severity: 'warning',
+      provenance: 'inferred',
+      message:
+        'Las partes tienen distintos números de compases; no se añaden silencios para aparentar una alineación confirmada.',
+    });
 
   const preliminaryScore: Score = {
     id: `score-omr-${Date.now()}`,
@@ -657,51 +669,63 @@ export function convertOmrIrToScore(
     lyricist: hints.lyricist?.trim() || undefined,
     tempo: hints.tempo && hints.tempo >= 30 && hints.tempo <= 300 ? hints.tempo : 120,
     timeSignature,
-    keySignature:
-      hints.keySignature ||
-      (clampedFifths !== null ? FIFTHS_TO_MAJOR[clampedFifths] || 'C' : 'C'),
+    keySignature: initialKey,
     staves,
-    isGrandStaff: isGrandStaff || undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
 
-  // Refinar tonalidad mayor vs menor relativo con Krumhansl-Schmuckler
   const detectedKeyInfo = detectKeyFromScore(preliminaryScore);
-  if (hints.keySignature) {
-    preliminaryScore.keySignature = hints.keySignature;
-  } else if (clampedFifths !== null) {
-    const majorCandidate = FIFTHS_TO_MAJOR[clampedFifths] || 'C';
-    const minorCandidate = FIFTHS_TO_MINOR[clampedFifths];
-    if (minorCandidate && detectedKeyInfo.key === minorCandidate) {
-      preliminaryScore.keySignature = minorCandidate;
-    } else if (
-      clampedFifths === 1 &&
-      detectedKeyInfo.key === 'C' &&
-      detectedKeyInfo.confidence >= 45
-    ) {
-      // Corrección de falso positivo: si el modelo confundió un símbolo decorativo/segno con Fa#,
-      // pero el análisis de notas detecta C con confianza razonable, la tonalidad real es Do Mayor.
-      preliminaryScore.keySignature = 'C';
-    } else {
-      preliminaryScore.keySignature = majorCandidate;
-    }
-  } else {
-    preliminaryScore.keySignature = detectedKeyInfo.key;
-  }
+  if (detectedKeyInfo.key !== preliminaryScore.keySignature)
+    warnings.push({
+      code: 'key-suggestion',
+      severity: 'warning',
+      provenance: 'inferred',
+      message: `El análisis tonal sugiere ${detectedKeyInfo.key}; no reemplaza la armadura ${preliminaryScore.keySignature}.`,
+    });
 
   const normalized = normalizeScore(preliminaryScore) ?? preliminaryScore;
 
+  const rawLinks: OmrSourceLink[] = ir.parts.flatMap((part, sourcePart) =>
+    part.measures.flatMap((measure, sourceMeasure) =>
+      measure.events.map((event, sourceEvent) => {
+        const itemId = `omr-${event.kind}-${sourcePart}-${sourceMeasure}-${sourceEvent}`;
+        return {
+          sourcePart,
+          sourceMeasure,
+          sourceEvent,
+          src: event.src,
+          staffId: null,
+          measureId: null,
+          itemId,
+        };
+      })
+    )
+  );
+
+  const sourceLinks = refreshOmrSourceLinks(normalized, rawLinks);
+  const analysis = inspectOmrMeasures(normalized, sourceLinks);
+  warnings.push(...analysis.warnings);
+
   const avgConf =
     confidences.length > 0
-      ? Math.round(
-          (confidences.reduce((acc, v) => acc + v, 0) / confidences.length) * 100
-        )
-      : 85;
+      ? Math.round((confidences.reduce((acc, v) => acc + v, 0) / confidences.length) * 100)
+      : 0;
 
   return {
     score: normalized,
-    averageConfidence: Math.max(1, Math.min(100, avgConf)),
+    metadataHints: hints,
+    warnings,
+    proposals: analysis.proposals,
+    report: {
+      sourceEvents: sourceLinks.length,
+      representedEvents: sourceLinks.filter((link) => link.measureId !== null).length,
+      pendingEvents: sourceLinks.filter((link) => link.measureId === null).length,
+      unparseableRecords: ir.warnings.filter((warning) => warning.code === 'unparseable-tokens')
+        .length,
+    },
+    sourceLinks,
+    averageConfidence: Math.max(0, Math.min(100, avgConf)),
     measuresCount: maxMeasures,
     notesCount,
     stavesCount: staves.length,

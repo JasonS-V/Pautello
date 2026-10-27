@@ -31,6 +31,12 @@ import { VirtualPiano } from './components/PianoRoll/VirtualPiano';
 const ImportModal = lazy(() =>
   import('./components/Modals/ImportModal').then((module) => ({ default: module.ImportModal }))
 );
+const OmrReviewModal = lazy(() =>
+  import('./components/Modals/OmrReviewPanel').then((module) => ({
+    default: module.OmrReviewModal,
+  }))
+);
+import type { OmrResult } from './omr/omrEngine';
 
 const ExportModal = lazy(() =>
   import('./components/Modals/ExportModal').then((module) => ({ default: module.ExportModal }))
@@ -109,12 +115,22 @@ import { audioEngine } from './audio/synth';
 // Identificadores de los modales de la aplicación. El estado `activeModal`
 // garantiza que solo haya uno abierto a la vez (Fase 6 del plan de UI).
 type AppModal =
-  'export' | 'import' | 'shortcuts' | 'donate' | 'templates' | 'mixer' | 'tuner' | 'playalong';
+  | 'export'
+  | 'import'
+  | 'shortcuts'
+  | 'donate'
+  | 'templates'
+  | 'mixer'
+  | 'tuner'
+  | 'playalong'
+  | 'omr-review';
 
 export default function App() {
+  const [omrReview, setOmrReview] = useState<OmrResult | null>(null);
   const {
     score,
     saveState,
+    loadScoreDirectly,
     selectedItemId,
     selectedMeasureIdx,
     selectedStaffIdx,
@@ -767,6 +783,18 @@ export default function App() {
           onSelectVoice={setActiveVoice}
         />
 
+        {omrReview && omrReview.score.id === score.id && (
+          <div className="px-4 sm:px-6 pb-3 print:hidden">
+            <button
+              type="button"
+              className="text-xs font-semibold text-amber-800 dark:text-amber-300 underline"
+              onClick={() => openModal('omr-review')}
+            >
+              Revisar lectura OMR: fuente y {omrReview.warnings.length} aviso(s)
+            </button>
+          </div>
+        )}
+
         {/* Center Stage: Card container for Score Canvas + Modern Toolbar */}
         <div className="flex-1 px-4 sm:px-6 pb-4 flex flex-col min-h-0 print:px-0 print:pb-0 print:block print:w-full print:max-w-full">
           <div className="flex-1 flex flex-col bg-white dark:bg-studio-card rounded-2xl border border-slate-200 dark:border-studio-border shadow-md overflow-hidden min-h-0 transition-colors print:rounded-none print:border-none print:shadow-none print:overflow-visible print:block print:w-full print:max-w-full">
@@ -1005,15 +1033,15 @@ export default function App() {
           <ImportModal
             isOpen
             onClose={closeModal}
-            onImportScore={(importedScore) => {
-              loadTemplate({
-                id: 'imported',
-                name: importedScore.title,
-                description: 'Partitura importada',
-                score: importedScore,
-              });
+            onImportScore={(importedScore, session) => {
+              setOmrReview(session ?? null);
+              loadScoreDirectly(importedScore);
             }}
           />
+        )}
+
+        {activeModal === 'omr-review' && omrReview && omrReview.score.id === score.id && (
+          <OmrReviewModal result={omrReview} onClose={closeModal} />
         )}
 
         {activeModal === 'export' && (

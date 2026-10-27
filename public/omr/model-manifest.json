@@ -1,0 +1,66 @@
+{
+  "contractVersion": "1.0.0",
+  "modelFamily": "pautello-crnn-ctc-kern-line",
+  "provenance": {
+    "producer": "pytorch 2.13.0",
+    "trainingDomain": "Pentagramas monofónicos/acórdicos de dominio público PDMX renderizados con Verovio, tokenizados en sub-tokens Humdrum **kern con separador <b> (src/synth/tokens.py).",
+    "checkpointRecoveryStatus": "Pesos ONNX FP32 e INT8 presentes y reproducibles en el repositorio desde el commit 9fbbbe4d681c8454688f1446d8ea2d451b7ab3b5; los scripts de entrenamiento PyTorch originales (src/synth/tokens.py) no están incluidos en este repositorio.",
+    "weightsLicense": "Distribuido con Pautello (MIT) sobre datos sintéticos de dominio público PDMX/Verovio."
+  },
+  "tensorContract": {
+    "inputName": "input",
+    "outputName": "logits",
+    "inputType": "float32",
+    "outputType": "float32",
+    "inputShape": [1, 1, 128, "W"],
+    "outputShape": [1, "T", 142],
+    "horizontalSubsamplingFactor": 4,
+    "polarity": "inverted-ink-0-white-1-black",
+    "valueRange": [0.0, 1.0],
+    "normalization": {
+      "targetHeight": 128,
+      "targetSpacingPx": 10,
+      "maxWidthPx": 3600,
+      "inkThresholdDefault": 0.6
+    }
+  },
+  "vocabulary": {
+    "path": "public/omr/vocab.json",
+    "bytes": 1436,
+    "sha256": "7e0139c90b0572aaf7f679c7fd1d127ae9b02f9bd33bb9b7ac971ac0482061ca",
+    "tokenCount": 141,
+    "ctcBlankIndex": 0,
+    "totalOutputClasses": 142,
+    "recordSeparatorToken": "<b>",
+    "parserOnlyTokensAbsentFromVocab": [
+      ";",
+      "(",
+      ")",
+      "=|:",
+      "=:|",
+      "=:|!",
+      "=!|:",
+      "=::",
+      "*clefC3",
+      "*clefC4"
+    ]
+  },
+  "variants": {
+    "fp32": {
+      "id": "omr-line-fp32-v1",
+      "path": "public/omr/omr-line.fp32.onnx",
+      "bytes": 12828981,
+      "sha256": "fc4c1e3af94076c1bab621cca0e88f0b8357ac88a36d2831025864e518a54850",
+      "quantization": "none",
+      "role": "primary"
+    },
+    "int8": {
+      "id": "omr-line-int8-v1",
+      "path": "public/omr/omr-line.int8.onnx",
+      "bytes": 3251065,
+      "sha256": "61787b3c7f533df7e7295edcc505a90ea37d8ca787e470ecdb9945f94af84486",
+      "quantization": "dynamic-int8",
+      "role": "fallback"
+    }
+  }
+}

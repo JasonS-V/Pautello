@@ -1,22 +1,29 @@
 import { Score } from '../types/music';
-import {
-  TARGET_SPACING,
-  preprocessPage,
-  rgbaToGray,
-} from './omrPreprocess';
+import { TARGET_SPACING, preprocessPage, rgbaToGray } from './omrPreprocess';
 import {
   OmrDecodedLine,
+  OmrScoreIR,
   OmrStaffMeta,
+  OmrWarning,
   assembleIR,
   decodeLine,
   i2wFromVocab,
   lineFragment,
 } from './omrDecode';
-import { OmrMetadataHints, convertOmrIrToScore } from './omrToScore';
 import {
-  decodeScorePayloadFromText,
-  extractScoreFromPngBytes,
-} from './scorePayloadCodec';
+  OmrConversionSummary,
+  OmrMeasureProposal,
+  OmrMetadataHints,
+  OmrSourceLink,
+  convertOmrIrToScore,
+} from './omrToScore';
+import { decodeScorePayloadFromText, extractScoreFromPngBytes } from './scorePayloadCodec';
+import {
+  OmrActiveModelContract,
+  OmrModelManifest,
+  verifyModelOutputCompatibility,
+  verifyVocabularyAgainstManifest,
+} from './omrModelContract';
 
 export type OmrStage =
   | 'loading-file'
@@ -34,6 +41,25 @@ export interface OmrProgress {
   totalPages?: number;
 }
 
+export interface OmrPageDiagnostic {
+  pageNumber: number;
+  width: number;
+  height: number;
+  usedThreshold: number;
+  deskewAngleDeg: number;
+  systemsCount: number;
+  stavesCount: number;
+  boxes: Array<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    lineSpacing: number;
+    system: number;
+    voice: number;
+  }>;
+}
+
 export interface OmrResult {
   score: Score;
   confidence: number;
@@ -42,7 +68,26 @@ export interface OmrResult {
   measuresDetected: number;
   notesDetected: number;
   sourceType: 'lossless-metadata' | 'neural-onnx';
-  warnings: string[];
+  ir: OmrScoreIR | null;
+  sourceLinks: OmrSourceLink[];
+  warnings: OmrWarning[];
+  proposals?: OmrMeasureProposal[];
+  report?: OmrConversionSummary['report'];
+  sourcePages?: OmrSourcePage[];
+  recognizedScore?: Score;
+  acceptedProposals?: OmrMeasureProposal[];
+  metadataHints?: OmrMetadataHints;
+  stageTrace?: OmrProgress[];
+  pageDiagnostics?: OmrPageDiagnostic[];
+  modelContract?: OmrActiveModelContract | null;
+}
+
+export interface OmrSourcePage {
+  pageNumber: number;
+  width: number;
+  height: number;
+  imageUrl: string;
+  deskewAngleDeg: number;
 }
 
 interface PageGrayBuffer {
@@ -50,14 +95,18 @@ interface PageGrayBuffer {
   width: number;
   height: number;
   gray: Float32Array;
+  imageUrl: string;
 }
 
 interface CachedOmrRuntime {
   ort: typeof import('onnxruntime-web/wasm');
   session: import('onnxruntime-web/wasm').InferenceSession;
+  vocabTokens: string[];
   i2w: Record<number, string>;
   inputName: string;
   outputName: string;
+  manifest?: OmrModelManifest;
+  modelContract: OmrActiveModelContract;
 }
 
 let cachedRuntimePromise: Promise<CachedOmrRuntime> | null = null;
@@ -87,13 +136,31 @@ async function getOmrRuntime(): Promise<CachedOmrRuntime> {
       throw new Error(`No se pudo cargar el vocabulario OMR (${vocabRes.status}).`);
     }
     const vocabJson = (await vocabRes.json()) as { tokens: string[] };
-    const i2w = i2wFromVocab(vocabJson.tokens);
+    const vocabTokens = vocabJson.tokens;
+
+    let manifest: OmrModelManifest | undefined;
+    try {
+      const manifestUrl = resolvePublicAssetUrl('./omr/model-manifest.json');
+      const manifestRes = await fetch(manifestUrl);
+      if (manifestRes.ok) {
+        manifest = (await manifestRes.json()) as OmrModelManifest;
+      }
+    } catch {
+      manifest = undefined;
+    }
+
+    if (manifest) {
+      verifyVocabularyAgainstManifest(vocabTokens, manifest);
+    }
+    const i2w = i2wFromVocab(vocabTokens);
 
     let modelBuffer: ArrayBuffer;
+    let variant: 'fp32' | 'int8';
     const fp32Url = resolvePublicAssetUrl('./omr/omr-line.fp32.onnx');
     const fp32Res = await fetch(fp32Url);
     if (fp32Res.ok) {
       modelBuffer = await fp32Res.arrayBuffer();
+      variant = 'fp32';
     } else {
       const int8Url = resolvePublicAssetUrl('./omr/omr-line.int8.onnx');
       const int8Res = await fetch(int8Url);
@@ -101,6 +168,7 @@ async function getOmrRuntime(): Promise<CachedOmrRuntime> {
         throw new Error('No se encontraron los pesos del modelo OMR en ./omr/.');
       }
       modelBuffer = await int8Res.arrayBuffer();
+      variant = 'int8';
     }
 
     const session = await ort.InferenceSession.create(new Uint8Array(modelBuffer), {
@@ -110,8 +178,28 @@ async function getOmrRuntime(): Promise<CachedOmrRuntime> {
 
     const inputName = session.inputNames[0] || 'input';
     const outputName = session.outputNames[0] || 'logits';
+    const variantSpec = manifest?.variants[variant];
+    const modelContract: OmrActiveModelContract = {
+      contractVersion: manifest?.contractVersion ?? '1.0.0',
+      modelFamily: manifest?.modelFamily ?? 'pautello-crnn-ctc-kern-line',
+      variant,
+      variantId: variantSpec?.id ?? `omr-line-${variant}-v1`,
+      modelSha256: variantSpec?.sha256 ?? 'unknown',
+      vocabSha256: manifest?.vocabulary.sha256 ?? 'unknown',
+      tokenCount: vocabTokens.length,
+      totalOutputClasses: vocabTokens.length + 1,
+    };
 
-    return { ort, session, i2w, inputName, outputName };
+    return {
+      ort,
+      session,
+      vocabTokens,
+      i2w,
+      inputName,
+      outputName,
+      manifest,
+      modelContract,
+    };
   })().catch((err) => {
     cachedRuntimePromise = null;
     throw err;
@@ -131,7 +219,10 @@ function extractHintsFromPdfTextItems(
   fallbackFileName: string
 ): OmrMetadataHints {
   const hints: OmrMetadataHints = {};
-  const cleanTitleFallback = fallbackFileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  const cleanTitleFallback = fallbackFileName
+    .replace(/\.[^.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
 
   const fullText = items.map((i) => i.str).join(' ');
   hints.fullText = fullText;
@@ -255,7 +346,7 @@ function extractHintsFromPdfTextItems(
     }
 
     const rightItems = headerItems
-      .filter((it) => it !== titleCandidate && it.x > pageWidth * 0.50)
+      .filter((it) => it !== titleCandidate && it.x > pageWidth * 0.5)
       .sort((a, b) => b.y - a.y);
     if (rightItems.length > 0 && rightItems[0].str.length <= 80) {
       hints.composer = rightItems[0].str;
@@ -307,7 +398,10 @@ async function extractPdfPagesAndMetadata(
   const numPages = Math.min(pdfDoc.numPages, 20);
   const allTextChunks: string[] = [];
   let page1Hints: OmrMetadataHints = {
-    title: file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(),
+    title: file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim(),
   };
 
   for (let p = 1; p <= numPages; p++) {
@@ -384,6 +478,7 @@ async function extractPdfPagesAndMetadata(
       width: canvas.width,
       height: canvas.height,
       gray,
+      imageUrl: canvas.toDataURL('image/png'),
     });
   }
 
@@ -430,6 +525,7 @@ async function rasterizeImageFile(file: File): Promise<PageGrayBuffer> {
           width,
           height,
           gray,
+          imageUrl: canvas.toDataURL('image/png'),
         });
       } catch (err) {
         URL.revokeObjectURL(url);
@@ -452,10 +548,7 @@ function summarizeLosslessScore(score: Score): OmrResult {
   const notesDetected = score.staves.reduce(
     (acc, st) =>
       acc +
-      st.measures.reduce(
-        (mAcc, m) => mAcc + m.items.filter((it) => it.type === 'note').length,
-        0
-      ),
+      st.measures.reduce((mAcc, m) => mAcc + m.items.filter((it) => it.type === 'note').length, 0),
     0
   );
 
@@ -467,8 +560,22 @@ function summarizeLosslessScore(score: Score): OmrResult {
     measuresDetected,
     notesDetected,
     sourceType: 'lossless-metadata',
+    ir: null,
+    sourceLinks: [],
     warnings: [],
   };
+}
+
+function recordBrowserOmrRun(result: OmrResult): OmrResult {
+  if (typeof window !== 'undefined') {
+    const win = window as Window & {
+      __PAUTELLO_LAST_OMR_RUN__?: Omit<OmrResult, 'sourcePages'>;
+    };
+    const { sourcePages: _omittedPages, ...rest } = result;
+    void _omittedPages;
+    win.__PAUTELLO_LAST_OMR_RUN__ = rest;
+  }
+  return result;
 }
 
 /**
@@ -479,8 +586,13 @@ export async function recognizeScoreFromFile(
   onProgress?: (progress: OmrProgress) => void
 ): Promise<OmrResult> {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const stageTrace: OmrProgress[] = [];
+  const emitProgress = (progress: OmrProgress) => {
+    stageTrace.push(progress);
+    onProgress?.(progress);
+  };
 
-  onProgress?.({
+  emitProgress({
     stage: 'loading-file',
     message: 'Inspeccionando estructura del documento musical...',
     percent: 5,
@@ -491,12 +603,16 @@ export async function recognizeScoreFromFile(
     const svgText = await file.text();
     const losslessSvg = decodeScorePayloadFromText(svgText);
     if (losslessSvg) {
-      onProgress?.({
+      emitProgress({
         stage: 'building-score',
         message: 'Partitura vectorial Pautello restaurada al 100%.',
         percent: 100,
       });
-      return summarizeLosslessScore(losslessSvg);
+      return recordBrowserOmrRun({
+        ...summarizeLosslessScore(losslessSvg),
+        stageTrace,
+        pageDiagnostics: [],
+      });
     }
   }
 
@@ -505,34 +621,45 @@ export async function recognizeScoreFromFile(
     const buf = await file.arrayBuffer();
     const losslessPng = extractScoreFromPngBytes(new Uint8Array(buf));
     if (losslessPng) {
-      onProgress?.({
+      emitProgress({
         stage: 'building-score',
         message: 'Metadatos musicales PNG restaurados al 100%.',
         percent: 100,
       });
-      return summarizeLosslessScore(losslessPng);
+      return recordBrowserOmrRun({
+        ...summarizeLosslessScore(losslessPng),
+        stageTrace,
+        pageDiagnostics: [],
+      });
     }
   }
 
   let pages: PageGrayBuffer[];
   let hints: OmrMetadataHints = {
-    title: file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim(),
+    title: file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim(),
   };
 
   if (ext === 'pdf') {
-    const pdfData = await extractPdfPagesAndMetadata(file, onProgress);
+    const pdfData = await extractPdfPagesAndMetadata(file, emitProgress);
     if (pdfData.losslessScore) {
-      onProgress?.({
+      emitProgress({
         stage: 'building-score',
         message: 'Partitura PDF de Pautello restaurada al 100%.',
         percent: 100,
       });
-      return summarizeLosslessScore(pdfData.losslessScore);
+      return recordBrowserOmrRun({
+        ...summarizeLosslessScore(pdfData.losslessScore),
+        stageTrace,
+        pageDiagnostics: [],
+      });
     }
     pages = pdfData.pages;
     hints = pdfData.hints;
   } else {
-    onProgress?.({
+    emitProgress({
       stage: 'extracting-pages',
       message: 'Procesando imagen de la partitura en alta densidad...',
       percent: 20,
@@ -544,7 +671,7 @@ export async function recognizeScoreFromFile(
   }
 
   // 3. Preprocesar páginas y aislar pentagramas
-  onProgress?.({
+  emitProgress({
     stage: 'detecting-staves',
     message: 'Detectando pentagramas, sistemas y geometría de líneas...',
     percent: 35,
@@ -563,14 +690,15 @@ export async function recognizeScoreFromFile(
   }
 
   // 4. Inicializar motor ONNX Runtime Web
-  onProgress?.({
+  emitProgress({
     stage: 'loading-model',
     message: 'Inicializando red neuronal CRNN-CTC en WebAssembly...',
     percent: 45,
   });
 
   const runtime = await getOmrRuntime();
-  const { ort, session, i2w, inputName, outputName } = runtime;
+  const { ort, session, vocabTokens, i2w, inputName, outputName, manifest, modelContract } =
+    runtime;
 
   // 5. Ejecutar inferencia línea por línea
   const decodedLines: OmrDecodedLine[] = [];
@@ -581,7 +709,7 @@ export async function recognizeScoreFromFile(
     for (const inp of result.inputs) {
       processedStaves++;
       const pct = Math.round(50 + (processedStaves / totalStaves) * 40);
-      onProgress?.({
+      emitProgress({
         stage: 'running-inference',
         message: `Reconociendo símbolos musicales (pentagrama ${processedStaves} de ${totalStaves})...`,
         percent: pct,
@@ -599,6 +727,13 @@ export async function recognizeScoreFromFile(
       const outputMap = await session.run(feeds);
       const logitsTensor = outputMap[outputName];
       const dims = logitsTensor.dims; // [1, T, 142]
+      verifyModelOutputCompatibility({
+        vocabTokensCount: vocabTokens.length,
+        outputDims: dims,
+        inputNames: session.inputNames,
+        outputNames: session.outputNames,
+        manifest,
+      });
       const T = dims[1];
       const C = dims[2];
       const logitsData = logitsTensor.data as Float32Array;
@@ -620,7 +755,7 @@ export async function recognizeScoreFromFile(
   }
 
   // 6. Ensamblar representación intermedia y sintetizar Score de Pautello
-  onProgress?.({
+  emitProgress({
     stage: 'building-score',
     message: 'Reconstruyendo compases, armadura y voces...',
     percent: 95,
@@ -628,6 +763,18 @@ export async function recognizeScoreFromFile(
 
   const ir = assembleIR(decodedLines);
   const summary = convertOmrIrToScore(ir, hints);
+  const unmappedWarnings: OmrWarning[] = summary.sourceLinks
+    .filter((link) => !link.measureId)
+    .map((link) => ({
+      code: 'unmapped-event',
+      severity: 'error',
+      provenance: 'modified',
+      message: `Un evento leído no aparece en la partitura editable (parte ${link.sourcePart + 1}, compás ${link.sourceMeasure + 1}).`,
+      page: link.src?.page,
+      system: link.src?.system,
+      staff: link.src?.staff,
+      src: link.src,
+    }));
 
   if (summary.notesCount === 0) {
     throw new Error(
@@ -635,13 +782,27 @@ export async function recognizeScoreFromFile(
     );
   }
 
-  onProgress?.({
+  emitProgress({
     stage: 'building-score',
     message: 'Lectura OMR completada.',
     percent: 100,
   });
 
-  return {
+  const pageDiagnostics: OmrPageDiagnostic[] = pages.map((page, index) => {
+    const prep = preprocessedPages[index].result;
+    return {
+      pageNumber: page.pageNumber,
+      width: page.width,
+      height: page.height,
+      usedThreshold: prep.usedThreshold,
+      deskewAngleDeg: prep.deskewAngleDeg,
+      systemsCount: prep.systems.length,
+      stavesCount: prep.boxes.length,
+      boxes: prep.boxes,
+    };
+  });
+
+  return recordBrowserOmrRun({
     score: summary.score,
     confidence: summary.averageConfidence,
     pagesProcessed: pages.length,
@@ -649,6 +810,21 @@ export async function recognizeScoreFromFile(
     measuresDetected: summary.measuresCount,
     notesDetected: summary.notesCount,
     sourceType: 'neural-onnx',
-    warnings: ir.warnings.map((w) => w.message),
-  };
+    ir,
+    sourceLinks: summary.sourceLinks,
+    warnings: [...ir.warnings, ...summary.warnings, ...unmappedWarnings],
+    proposals: summary.proposals,
+    report: summary.report,
+    metadataHints: summary.metadataHints,
+    stageTrace,
+    pageDiagnostics,
+    modelContract,
+    sourcePages: pages.map((page, index) => ({
+      pageNumber: page.pageNumber,
+      width: page.width,
+      height: page.height,
+      imageUrl: page.imageUrl,
+      deskewAngleDeg: preprocessedPages[index].result.deskewAngleDeg,
+    })),
+  });
 }

@@ -5,7 +5,7 @@
 
 import { Step } from '../types/music';
 
-export const IR_VERSION = '1.3';
+export const IR_VERSION = '1.4';
 export const WIDTH_REDUCTION = 4;
 export const DIV_WHOLE = 192;
 
@@ -31,8 +31,6 @@ const BARLINE_TYPES: Readonly<Record<string, string>> = {
   '=:|!|:': 'repeat-both',
   '==:|!': 'final-repeat-end',
 };
-
-const LEGITIMATE_ADJACENT = new Set(['= =', '= ==']);
 
 export interface OmrTokenEvent {
   token: string;
@@ -125,7 +123,10 @@ export interface OmrDecodedLine {
 
 export interface OmrMeasureIR {
   index: number;
+  page?: number;
   system: number;
+  leftBarline?: OmrMeasureIR['barline'];
+  attributeEvents?: Array<Extract<OmrElementIR, { kind: 'attribute' }>>;
   attributes?: {
     clef?: OmrClefIR;
     keyFifths?: number;
@@ -149,6 +150,9 @@ export interface OmrPartIR {
 export interface OmrWarning {
   code: string;
   message: string;
+  severity: 'warning' | 'error';
+  provenance: 'observed' | 'inferred' | 'modified' | 'unsupported';
+  src?: OmrSourceSpan;
   page?: number;
   system?: number;
   staff?: number;
@@ -159,6 +163,7 @@ export interface OmrWarning {
 
 export interface OmrScoreIR {
   irVersion: string;
+  lines?: OmrDecodedLine[];
   structure: {
     recognized: {
       stavesPerSystem: number;
@@ -257,31 +262,6 @@ function splitRecords(tokenEvents: OmrTokenEvent[]): OmrTokenEvent[][] {
   return recs;
 }
 
-function mergeBarlines(a: OmrTokenEvent[], b: OmrTokenEvent[]): OmrTokenEvent[] {
-  const keep = a[0].token === '=' && b[0].token !== '=' ? b : a;
-  const f0 = Math.min(a[0].f0, b[0].f0);
-  const f1 = Math.max(a[a.length - 1].f1, b[b.length - 1].f1);
-  const first: OmrTokenEvent = { ...keep[0], f0, f1 };
-  return [first, ...keep.slice(1)];
-}
-
-function collapseBarlines(recs: OmrTokenEvent[][]): OmrTokenEvent[][] {
-  const out: OmrTokenEvent[][] = [];
-  for (const rec of recs) {
-    out.push(rec);
-    while (out.length >= 2) {
-      const a = out[out.length - 2];
-      const b = out[out.length - 1];
-      if (!(a[0].token.startsWith('=') && b[0].token.startsWith('='))) break;
-      if (LEGITIMATE_ADJACENT.has(`${a[0].token} ${b[0].token}`)) break;
-      const merged = mergeBarlines(a, b);
-      out.length -= 2;
-      out.push(merged);
-    }
-  }
-  return out;
-}
-
 function parseDur(token: string): OmrDurationIR | null {
   const base = token.replace(/\.+$/, '');
   if (!DURATIONS.has(base)) return null;
@@ -347,7 +327,7 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
       const [num, den] = first.slice(2).split('/');
       el.time = { num: parseInt(num, 10), den: parseInt(den, 10) };
     } else {
-      return null;
+      return { kind: 'unparseable', tokens: toks, confidence: conf };
     }
     return el;
   }
@@ -366,6 +346,7 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
       kind: 'rest',
       duration: d,
       confidence: conf,
+      fermata: toks.includes(';'),
     };
   }
 
@@ -433,7 +414,7 @@ function bboxOf(record: OmrTokenEvent[], staff: OmrStaffMeta): [number, number, 
 
 export function lineFragment(tokenEvents: OmrTokenEvent[], staff: OmrStaffMeta): OmrElementIR[] {
   const out: OmrElementIR[] = [];
-  for (const record of collapseBarlines(splitRecords(tokenEvents))) {
+  for (const record of splitRecords(tokenEvents)) {
     const el = classify(record);
     if (el === null) continue;
     el.tokens = record.map((ev) => ev.token);
@@ -469,7 +450,8 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     const key = `${s.page}/${s.system}`;
     counts.set(key, Math.max(counts.get(key) ?? 0, s.staffIndex + 1));
   }
-  const m = counts.size ? modal([...counts.values()]) : 0;
+  const expectedCount = counts.size ? modal([...counts.values()]) : 0;
+  const m = counts.size ? Math.max(...counts.values()) : 0;
 
   const warnings: OmrWarning[] = [];
   const keys = [...counts.keys()].sort((a, b) => {
@@ -481,14 +463,16 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
   for (const key of keys) {
     const [page, sysno] = key.split('/').map(Number);
     const n = counts.get(key) ?? 0;
-    if (n !== m) {
+    if (n !== expectedCount || m !== expectedCount) {
       warnings.push({
-        code: 'staff-count-mismatch',
+        code: 'staff-assignment-uncertain',
+        severity: 'warning',
+        provenance: 'inferred',
         page,
         system: sysno,
         found: n,
-        expected: m,
-        message: `Página ${page}, sistema ${sysno}: ${n} pentagramas detectados (esperados: ${m}).`,
+        expected: expectedCount,
+        message: `Página ${page}, sistema ${sysno}: ${n} pautas (habituales: ${expectedCount}); se conservan todas y la identidad de las partes requiere revisión.`,
       });
     }
   }
@@ -498,7 +482,10 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     parts.push({ index: i, label: null, measures: [] });
   }
   const openMeasures: Array<OmrMeasureIR | null> = new Array(m).fill(null);
-  const clefVotes: Array<Map<string, number>> = Array.from({ length: m }, () => new Map<string, number>());
+  const clefVotes: Array<Map<string, number>> = Array.from(
+    { length: m },
+    () => new Map<string, number>()
+  );
   const structure = {
     stavesPerSystem: m,
     clefs: new Array<string | null>(m).fill(null),
@@ -506,34 +493,61 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     time: null as OmrTimeIR | null,
   };
 
-  const open = (p: number, system: number): OmrMeasureIR => {
+  const open = (p: number, page: number, system: number): OmrMeasureIR => {
     let mm = openMeasures[p];
     if (mm === null) {
-      mm = { index: parts[p].measures.length, system, events: [] };
+      mm = { index: parts[p].measures.length, page, system, events: [] };
       parts[p].measures.push(mm);
       openMeasures[p] = mm;
+    } else if (mm.events.length === 0) {
+      mm.page = page;
+      mm.system = system;
     }
     return mm;
   };
 
-  for (const ln of lines) {
+  for (const ln of [...lines].sort(
+    (a, b) =>
+      a.staff.page - b.staff.page ||
+      a.staff.system - b.staff.system ||
+      a.staff.staffIndex - b.staff.staffIndex
+  )) {
     const st = ln.staff;
     const p = st.staffIndex;
     if (st.truncated) {
       warnings.push({
         code: 'line-truncated',
+        severity: 'error',
+        provenance: 'modified',
+        src: { page: st.page, system: st.system, staff: p, bbox: st.bbox },
         page: st.page,
         system: st.system,
         staff: p,
         message: `Página ${st.page}, sistema ${st.system}, pentagrama ${p + 1}: ancho truncado al límite máximo.`,
       });
     }
-    if (p >= m) continue;
+    const previous = openMeasures[p];
+    if (
+      previous &&
+      previous.events.length &&
+      (previous.page !== st.page || previous.system !== st.system)
+    ) {
+      warnings.push({
+        code: 'measure-crosses-system',
+        severity: 'warning',
+        provenance: 'observed',
+        src: { page: st.page, system: st.system, staff: p, bbox: st.bbox },
+        message: 'Continúa un compás sin barra observada al cambiar de sistema; revisar la fuente.',
+      });
+    }
 
     for (const el of ln.elements) {
       if (el.kind === 'unparseable') {
         warnings.push({
           code: 'unparseable-tokens',
+          severity: 'error',
+          provenance: 'unsupported',
+          src: el.src,
           page: st.page,
           system: st.system,
           staff: p,
@@ -543,7 +557,20 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
         continue;
       }
       if (el.kind === 'attribute') {
-        const mm = open(p, st.system);
+        const mm = open(p, st.page, st.system);
+        (mm.attributeEvents ??= []).push(el);
+        if (mm.events.length) {
+          warnings.push({
+            code: 'attribute-inside-measure',
+            severity: 'warning',
+            provenance: 'unsupported',
+            src: el.src,
+            tokens: el.tokens,
+            message:
+              'Atributo dentro de un compás abierto: conservado en el IR, requiere revisar su posición.',
+          });
+          continue;
+        }
         if (!mm.attributes) mm.attributes = {};
         if (el.clef) mm.attributes.clef = el.clef;
         if (el.keyFifths !== undefined) mm.attributes.keyFifths = el.keyFifths;
@@ -564,18 +591,34 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
       }
       if (el.kind === 'barline') {
         const mm = openMeasures[p];
+        const barline = {
+          type: el.type,
+          confidence: el.confidence,
+          tokens: el.tokens,
+          src: el.src,
+        };
         if (mm !== null && mm.events.length > 0) {
-          mm.barline = {
-            type: el.type,
-            confidence: el.confidence,
-            tokens: el.tokens,
-            src: el.src,
-          };
+          mm.barline = barline;
           openMeasures[p] = null;
+          if (el.type === 'repeat-start' || el.type === 'repeat-both') {
+            open(p, st.page, st.system).leftBarline = { ...barline, type: 'repeat-start' };
+          }
+        } else if (el.type === 'repeat-start' || el.type === 'repeat-both') {
+          open(p, st.page, st.system).leftBarline = barline;
+        } else if (el.type !== 'regular') {
+          warnings.push({
+            code: 'unattached-barline',
+            severity: 'warning',
+            provenance: 'unsupported',
+            src: el.src,
+            tokens: el.tokens,
+            message:
+              'Barra sin eventos entre límites: conservada en la línea original para revisión.',
+          });
         }
         continue;
       }
-      open(p, st.system).events.push(el);
+      open(p, st.page, st.system).events.push(el);
     }
   }
 
@@ -597,6 +640,7 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
 
   return {
     irVersion: IR_VERSION,
+    lines,
     structure: { recognized: structure },
     parts,
     warnings,

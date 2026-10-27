@@ -1,0 +1,289 @@
+{
+  "date": "2026-10-27",
+  "purpose": "F0.1: matriz diagnóstica de entradas; no es el corpus musical F0.3 ni una medida de exactitud.",
+  "test": {
+    "path": "src/omr/__tests__/omrBenchmarkInput.test.ts",
+    "sha256": "14dd04730d336c60ed55e46a92436163876d4fe17fac85b742cd2085a0ad4c78",
+    "cases": 12
+  },
+  "neuralCases": [
+    {
+      "id": "external-pdmx-line-png",
+      "sourceType": "image",
+      "format": "png",
+      "inputSha256": "3b754a82d1cdbca3a0df6bf83745264f2c2adab61f98d348b67deb4f3cf58cee",
+      "code": [
+        {
+          "path": "scripts/omr-benchmark.ts",
+          "sha256": "0bb97f14d967b5fee694ab208130f8fb76efeae531e3b4b6806d58a344f1312c"
+        },
+        {
+          "path": "scripts/omr-benchmark-input.ts",
+          "sha256": "9618f71da167794c32d108f4e247e7c6c4b371a2fd6181b8949bf98907b635af"
+        },
+        {
+          "path": "src/omr/omrPreprocess.ts",
+          "sha256": "0680aa2885d0014780cffc80fa02bf7265db3333a4b7e568863cd743bbbccfa4"
+        },
+        {
+          "path": "src/omr/omrDecode.ts",
+          "sha256": "e0ef09e6da7eb5c73239333a32900ca3799c76e6dca6c41b224d7ae78f6073f3"
+        },
+        {
+          "path": "src/omr/omrToScore.ts",
+          "sha256": "8b46dc4763a3b228e7daef4c23c54c6c10c2359ce51fe0d63543f8a3267dde63"
+        },
+        {
+          "path": "src/omr/scorePayloadCodec.ts",
+          "sha256": "7db4f831948acfdf53a3f0919e6f1b4d1a2507f93ee1e31b129174578407e1e9"
+        },
+        {
+          "path": "src/types/music.ts",
+          "sha256": "f64b99f694c0cc736a655cde493f4a83f80f936f63bec40931d8d692d83d72de"
+        },
+        {
+          "path": "src/constants/pitches.ts",
+          "sha256": "5dda7329b7688949c615005a189bab0e89490d31eb96cf9ede1d3cc389e1656b"
+        },
+        {
+          "path": "src/utils/scoreSchema.ts",
+          "sha256": "1b9ae57ae934597a4e2d4ba341c955a0adcee7a3a99fb9533c6955e50ff58352"
+        },
+        {
+          "path": "src/utils/measureTiming.ts",
+          "sha256": "b8f47755015bfe69e9ecf2ad033fe96158fbdbf287d498a9c33b45ce21ed055c"
+        },
+        {
+          "path": "src/utils/keyDetection.ts",
+          "sha256": "5521aa4e9a09801d96329cdede676d8cd927fda8eb42f4bb9df89076e3f0c1df"
+        },
+        {
+          "path": "src/utils/chordUtils.ts",
+          "sha256": "1ce20430471f49eda09c9ddfe904b3c415018151f21941b25f6de2f9cf9eb747"
+        }
+      ],
+      "versions": {
+        "pdfjs": "6.4.299",
+        "ort": "1.30.0",
+        "poppler": null,
+        "imageDecoder": "1.0.13"
+      },
+      "model": {
+        "path": "public/omr/omr-line.fp32.onnx",
+        "bytes": 12828981,
+        "sha256": "fc4c1e3af94076c1bab621cca0e88f0b8357ac88a36d2831025864e518a54850"
+      },
+      "vocab": {
+        "path": "public/omr/vocab.json",
+        "bytes": 1436,
+        "sha256": "7e0139c90b0572aaf7f679c7fd1d127ae9b02f9bd33bb9b7ac971ac0482061ca"
+      },
+      "preprocessing": {
+        "inkThreshold": 0.6,
+        "targetSpacing": 10,
+        "targetHeight": 128,
+        "maxWidth": 3600,
+        "deskew": true,
+        "rasterDpi": null,
+        "rasterizer": "@napi-rs/canvas",
+        "smallImageScale": {
+          "belowWidth": 1400,
+          "factor": 2
+        }
+      },
+      "runtime": {
+        "executionProvider": "wasm",
+        "numThreads": 1,
+        "graphOptimizationLevel": "all"
+      },
+      "evidence": ["tmp/omr-f0-verified-image-1", "tmp/omr-f0-verified-image-2"],
+      "repeatable": {
+        "manifest": true,
+        "grayRaster": true,
+        "semantic": true
+      },
+      "semanticSha256": "7136127356c217956525251d441ecb54be09c82f41270727340d6e04c5829b2c",
+      "score": {
+        "staves": 1,
+        "measures": 6,
+        "notes": 9,
+        "modelConfidence": 97
+      },
+      "timings": [
+        {
+          "inspectionMs": 0.4389000000001033,
+          "modelLoadMs": 189.44910000000004,
+          "modelWarmLoadMs": 14.814699999999903,
+          "rasterMs": 325.47220000000016,
+          "geometryMs": 39.0942,
+          "inferenceMs": 187.19439999999986,
+          "decodeMs": 1.6251999999999498,
+          "assembleMs": 0.5900000000001455,
+          "convertMs": 2.3388999999997395
+        },
+        {
+          "inspectionMs": 0.5122999999998683,
+          "modelLoadMs": 203.61950000000002,
+          "modelWarmLoadMs": 14.739100000000235,
+          "rasterMs": 327.66279999999983,
+          "geometryMs": 37.58129999999983,
+          "inferenceMs": 192.91899999999987,
+          "decodeMs": 1.6520000000000437,
+          "assembleMs": 0.6760000000003856,
+          "convertMs": 3.0010999999999513
+        }
+      ]
+    },
+    {
+      "id": "local-el-rey-image-pdf",
+      "sourceType": "pdf-image",
+      "format": "pdf",
+      "inputSha256": "652cc32cfd1846b6d76acccbbe5cd2c3030b549ab75f6169e376802412dead58",
+      "code": [
+        {
+          "path": "scripts/omr-benchmark.ts",
+          "sha256": "0bb97f14d967b5fee694ab208130f8fb76efeae531e3b4b6806d58a344f1312c"
+        },
+        {
+          "path": "scripts/omr-benchmark-input.ts",
+          "sha256": "9618f71da167794c32d108f4e247e7c6c4b371a2fd6181b8949bf98907b635af"
+        },
+        {
+          "path": "src/omr/omrPreprocess.ts",
+          "sha256": "0680aa2885d0014780cffc80fa02bf7265db3333a4b7e568863cd743bbbccfa4"
+        },
+        {
+          "path": "src/omr/omrDecode.ts",
+          "sha256": "e0ef09e6da7eb5c73239333a32900ca3799c76e6dca6c41b224d7ae78f6073f3"
+        },
+        {
+          "path": "src/omr/omrToScore.ts",
+          "sha256": "8b46dc4763a3b228e7daef4c23c54c6c10c2359ce51fe0d63543f8a3267dde63"
+        },
+        {
+          "path": "src/omr/scorePayloadCodec.ts",
+          "sha256": "7db4f831948acfdf53a3f0919e6f1b4d1a2507f93ee1e31b129174578407e1e9"
+        },
+        {
+          "path": "src/types/music.ts",
+          "sha256": "f64b99f694c0cc736a655cde493f4a83f80f936f63bec40931d8d692d83d72de"
+        },
+        {
+          "path": "src/constants/pitches.ts",
+          "sha256": "5dda7329b7688949c615005a189bab0e89490d31eb96cf9ede1d3cc389e1656b"
+        },
+        {
+          "path": "src/utils/scoreSchema.ts",
+          "sha256": "1b9ae57ae934597a4e2d4ba341c955a0adcee7a3a99fb9533c6955e50ff58352"
+        },
+        {
+          "path": "src/utils/measureTiming.ts",
+          "sha256": "b8f47755015bfe69e9ecf2ad033fe96158fbdbf287d498a9c33b45ce21ed055c"
+        },
+        {
+          "path": "src/utils/keyDetection.ts",
+          "sha256": "5521aa4e9a09801d96329cdede676d8cd927fda8eb42f4bb9df89076e3f0c1df"
+        },
+        {
+          "path": "src/utils/chordUtils.ts",
+          "sha256": "1ce20430471f49eda09c9ddfe904b3c415018151f21941b25f6de2f9cf9eb747"
+        }
+      ],
+      "versions": {
+        "pdfjs": "6.4.299",
+        "ort": "1.30.0",
+        "poppler": "pdftoppm version 26.07.0",
+        "imageDecoder": null
+      },
+      "model": {
+        "path": "public/omr/omr-line.fp32.onnx",
+        "bytes": 12828981,
+        "sha256": "fc4c1e3af94076c1bab621cca0e88f0b8357ac88a36d2831025864e518a54850"
+      },
+      "vocab": {
+        "path": "public/omr/vocab.json",
+        "bytes": 1436,
+        "sha256": "7e0139c90b0572aaf7f679c7fd1d127ae9b02f9bd33bb9b7ac971ac0482061ca"
+      },
+      "preprocessing": {
+        "inkThreshold": 0.6,
+        "targetSpacing": 10,
+        "targetHeight": 128,
+        "maxWidth": 3600,
+        "deskew": true,
+        "rasterDpi": 172.8,
+        "rasterizer": "pdftoppm -gray",
+        "smallImageScale": null
+      },
+      "runtime": {
+        "executionProvider": "wasm",
+        "numThreads": 1,
+        "graphOptimizationLevel": "all"
+      },
+      "evidence": ["tmp/omr-f0-verified-pdf-1", "tmp/omr-f0-verified-pdf-2"],
+      "repeatable": {
+        "manifest": true,
+        "grayRaster": true,
+        "semantic": true
+      },
+      "semanticSha256": "b408ff3cae6ade650aefd5b1a0725f2582e9c9d3ee608d6123de9925ed56eca0",
+      "score": {
+        "staves": 1,
+        "measures": 24,
+        "notes": 97,
+        "modelConfidence": 71
+      },
+      "timings": [
+        {
+          "inspectionMs": 455.18150000000014,
+          "modelLoadMs": 219.54379999999992,
+          "modelWarmLoadMs": 16.746399999999994,
+          "rasterMs": 117.46549999999979,
+          "geometryMs": 56.752300000000105,
+          "inferenceMs": 994.6711,
+          "decodeMs": 4.040999999999258,
+          "assembleMs": 0.9791999999997643,
+          "convertMs": 4.14009999999962
+        },
+        {
+          "inspectionMs": 410.1420999999998,
+          "modelLoadMs": 285.4846000000002,
+          "modelWarmLoadMs": 22.386399999999867,
+          "rasterMs": 114.60260000000017,
+          "geometryMs": 64.2521999999999,
+          "inferenceMs": 1167.2822,
+          "decodeMs": 7.357800000000225,
+          "assembleMs": 0.966899999999896,
+          "convertMs": 8.451900000000023
+        }
+      ]
+    }
+  ],
+  "syntheticCases": [
+    {
+      "ids": ["native-svg", "native-png", "native-pdf"],
+      "sourceType": "lossless-metadata",
+      "verification": "CLI completo con Poppler inexistente; inferenceExecuted false, model/vocab null, sin IR"
+    },
+    {
+      "ids": ["pdf-text", "pdf-without-text"],
+      "sourceTypes": ["pdf-text", "pdf-image"],
+      "verification": "Clasificación PDF.js; no se ejecuta inferencia en estos controles de texto"
+    },
+    {
+      "ids": ["external-png", "external-jpg", "external-jpeg", "external-webp", "external-svg"],
+      "sourceType": "image",
+      "verification": "Decodificación y geometría del raster; inferencia real repetida solo en PNG"
+    },
+    {
+      "ids": ["unknown-format", "corrupt-image"],
+      "verification": "Error propagado antes de inferencia"
+    }
+  ],
+  "limits": [
+    "Confianza CTC separada de exactitud musical",
+    "Canvas Node para imágenes y Poppler para PDF; PDF.js/Canvas de navegador se evalúan en F0.5",
+    "Sin precisión publicada hasta aprobar la referencia F0.2",
+    "El Rey se mantiene como recurso local sin permiso de redistribución"
+  ]
+}

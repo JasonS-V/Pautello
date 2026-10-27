@@ -9,6 +9,8 @@ release/
 
 # Testing
 coverage/
+tmp/
+tasks/local/
 
 # Environment variables
 .env

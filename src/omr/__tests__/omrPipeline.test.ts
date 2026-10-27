@@ -24,6 +24,58 @@ function makeEventsFromSubtokens(subtokens: string[]): OmrTokenEvent[] {
 }
 
 describe('omrDecode & omrToScore pipeline', () => {
+  it('conserva ubicación y causa de un registro no interpretable', () => {
+    const staff: OmrStaffMeta = {
+      page: 2,
+      system: 1,
+      staffIndex: 0,
+      bbox: [40, 80, 800, 120],
+      lineSpacingPx: 12,
+      normSpacing: 10,
+    };
+    const elements = lineFragment(makeEventsFromSubtokens(['16', '<b>']), staff);
+    const ir = assembleIR([{ staff, elements }]);
+
+    expect(ir.warnings[0]).toMatchObject({
+      code: 'unparseable-tokens',
+      severity: 'error',
+      provenance: 'unsupported',
+      page: 2,
+      system: 1,
+      staff: 0,
+      tokens: ['16'],
+      src: { page: 2, system: 1, staff: 0, bbox: [40, 80, 9.6, 120] },
+    });
+  });
+
+  it('relaciona cada evento leído con su elemento editable después de reconciliar', () => {
+    const staff: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 0,
+      bbox: [0, 0, 800, 100],
+      lineSpacingPx: 10,
+      normSpacing: 10,
+    };
+    const elements = lineFragment(
+      makeEventsFromSubtokens(['2', 'C', '<b>', '4', 'D', '<b>', '2', 'E', '<b>', '=']),
+      staff
+    );
+    const ir = assembleIR([{ staff, elements }]);
+    const result = convertOmrIrToScore(ir, { timeSignature: { beats: 3, beatType: 4 } });
+
+    expect(result.score.staves[0].measures).toHaveLength(1);
+    expect(result.sourceLinks).toHaveLength(3);
+    for (const link of result.sourceLinks) {
+      expect(link.src).toMatchObject({ page: 1, system: 0, staff: 0 });
+      const target = result.score.staves
+        .find((s) => s.id === link.staffId)
+        ?.measures.find((m) => m.id === link.measureId)
+        ?.items.find((item) => item.id === link.itemId);
+      expect(target).toBeDefined();
+    }
+  });
+
   it('decodifica logits CTC colapsando repeticiones y descartando blanks (clase 0)', () => {
     const vocab = ['*clefG2', '<b>', '4', 'c', '='];
     const i2w = i2wFromVocab(vocab);
@@ -40,7 +92,7 @@ describe('omrDecode & omrToScore pipeline', () => {
     expect(events[0].confidence).toBeGreaterThan(0.9);
   });
 
-  it('ensambla una partitura de Gran Pentagrama (Clave de Sol y Clave de Fa) con alteraciones, puntillos y tresillos', () => {
+  it('ensambla dos partes independientes con alteraciones, puntillos y tresillos', () => {
     const staffTreble: OmrStaffMeta = {
       page: 1,
       system: 0,
@@ -138,10 +190,10 @@ describe('omrDecode & omrToScore pipeline', () => {
     expect(score.title).toBe('Sonatina en Sol');
     expect(score.composer).toBe('Muzio Clementi');
     expect(score.tempo).toBe(128);
-    expect(score.isGrandStaff).toBe(true);
+    expect(score.isGrandStaff).toBeUndefined();
     expect(score.staves).toHaveLength(2);
-    expect(score.staves[0].name).toBe('Mano Derecha');
-    expect(score.staves[1].name).toBe('Mano Izquierda');
+    expect(score.staves[0].name).toBe('Pentagrama 1');
+    expect(score.staves[1].name).toBe('Pentagrama 2');
     expect(score.staves[0].clef).toBe('treble');
     expect(score.staves[1].clef).toBe('bass');
 
@@ -151,9 +203,10 @@ describe('omrDecode & omrToScore pipeline', () => {
       duration: 'q',
       isDotted: true,
       pitch: { step: 'G', octave: 4, accidental: null },
-      lyric: 'Sol',
-      chord: 'G',
     });
+    expect(m1Items[0].lyric).toBeUndefined();
+    expect(summary.metadataHints.lyrics?.[0]).toBe('Sol');
+    expect(summary.warnings.some((w) => w.code === 'unanchored-text')).toBe(true);
     expect(m1Items[1]).toMatchObject({
       type: 'note',
       duration: '8',
@@ -169,10 +222,10 @@ describe('omrDecode & omrToScore pipeline', () => {
     expect(m2Items[0]).toMatchObject({
       type: 'note',
       duration: 'h',
-      isTied: true,
       articulation: 'fermata',
       pitch: { step: 'D', octave: 5, accidental: null },
     });
+    expect(m2Items[0].isTied).toBeUndefined();
     expect(m2Items[1]).toMatchObject({
       type: 'rest',
       duration: 'h',
@@ -186,8 +239,11 @@ describe('omrDecode & omrToScore pipeline', () => {
     const samplePngPath = path.resolve(process.cwd(), 'src/omr/__tests__/fixtures/line.png');
     const sampleJsonPath = path.resolve(process.cwd(), 'src/omr/__tests__/fixtures/line.json');
 
-    if (!fs.existsSync(modelPath) || !fs.existsSync(samplePngPath)) {
-      return;
+    for (const required of [modelPath, vocabPath, samplePngPath, sampleJsonPath]) {
+      expect(
+        fs.existsSync(required),
+        `Falta recurso requerido para inferencia real: ${required}`
+      ).toBe(true);
     }
 
     // Decodificar PNG de 8-bit escala de grises
@@ -296,7 +352,7 @@ describe('omrDecode & omrToScore pipeline', () => {
     expect(summary.averageConfidence).toBeGreaterThanOrEqual(95);
   }, 20000);
 
-  it('reconcilia clave de Fa, descarta ligaduras espurias entre notas de diferente altura y ajusta compases en 3/4', () => {
+  it('conserva clave de Fa y compases observados en 3/4 y diagnostica ligaduras espurias', () => {
     const staffMeta: OmrStaffMeta = {
       page: 1,
       system: 0,
@@ -369,11 +425,12 @@ describe('omrDecode & omrToScore pipeline', () => {
     const cNotes = allNotes.filter((n) => n.pitch?.step === 'C');
     expect(cNotes[0].isTied).toBe(true);
 
-    // Los compases sobrecargados con blancas deben haberse subdividido
-    expect(summary.score.staves[0].measures.length).toBeGreaterThanOrEqual(4);
+    // La barra observada manda; la sobrecarga requiere revisión.
+    expect(summary.score.staves[0].measures).toHaveLength(4);
+    expect(summary.warnings.some((w) => w.code === 'measure-overfull')).toBe(true);
   });
 
-  it('detecta compás 3/4, tempo 60, tonalidad Do Mayor y systemBreak en partituras tipo El Rey', () => {
+  it('separa pistas editoriales de armadura observada y conserva duración y saltos', () => {
     const staff1: OmrStaffMeta = {
       page: 1,
       system: 0,
@@ -398,7 +455,7 @@ describe('omrDecode & omrToScore pipeline', () => {
       '*k[f#]', // falso positivo
       '<b>',
       '2',
-      'D', // blanca en 3/4 debe promoverse a blanca con puntillo
+      'D', // duración observada, sin promoción
       '<b>',
       '=',
       '<b>',
@@ -438,22 +495,25 @@ describe('omrDecode & omrToScore pipeline', () => {
       tempo: 60,
       keySignature: 'C',
       genre: 'valseada',
+      timeSignature: { beats: 3, beatType: 4 },
     });
 
-    // Métrica debe ser 3/4 por el género valseada
+    // Métrica provisional declarada en las pistas
     expect(summary.score.timeSignature).toEqual({ beats: 3, beatType: 4 });
-    // Tonalidad debe ser Do Mayor
-    expect(summary.score.keySignature).toBe('C');
+    // Una pista tonal no reemplaza la armadura emitida por el modelo.
+    expect(summary.score.keySignature).toBe('G');
+    expect(summary.warnings.some((w) => w.code === 'metadata-conflict')).toBe(true);
     // Tempo debe ser 60 BPM
     expect(summary.score.tempo).toBe(60);
 
-    // Las blancas en compás de 3/4 deben ser promovidas a blancas con puntillo
+    // Las blancas mantienen su duración leída
     const m0 = summary.score.staves[0].measures[0];
     expect(m0.items[0]).toMatchObject({
       type: 'note',
       duration: 'h',
-      isDotted: true,
     });
+
+    expect(m0.items[0].isDotted).toBeUndefined();
 
     // La última medida del sistema 0 debe tener systemBreak: true
     expect(summary.score.staves[0].measures[1].systemBreak).toBe(true);

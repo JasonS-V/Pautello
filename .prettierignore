@@ -6,6 +6,8 @@ release/
 
 # Informe HTML de cobertura (generado por vitest --coverage)
 coverage/
+tmp/
+tasks/local/
 
 # Assets: partituras de ejemplo en PDF y recursos estáticos
 partituras_reales/

@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "id": "pdmx-0021737310-s1-st0",
+  "provenance": "Referencia de dominio público PDMX (pieza 0021737310, sistema 1, pauta 0, renderizada con Verovio) contrastada visualmente.",
+  "redistribution": "public-domain",
+  "source": {
+    "path": "src/omr/__tests__/fixtures/line.png",
+    "sha256": "3b754a82d1cdbca3a0df6bf83745264f2c2adab61f98d348b67deb4f3cf58cee",
+    "raster": {
+      "path": "src/omr/__tests__/fixtures/line.png",
+      "sha256": "3b754a82d1cdbca3a0df6bf83745264f2c2adab61f98d348b67deb4f3cf58cee",
+      "width": 2018,
+      "height": 181
+    }
+  },
+  "clef": "G2",
+  "keySignature": [],
+  "timeSignature": [4, 4],
+  "review": {
+    "visualPasses": 2,
+    "audition": true,
+    "approved": true,
+    "pending": []
+  },
+  "systems": [
+    {
+      "number": 1,
+      "page": 1,
+      "measures": [
+        {
+          "index": 0,
+          "number": 1,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m1-e1",
+              "pitch": "C5",
+              "accidental": null,
+              "duration": [1, 4],
+              "dots": 0,
+              "position": [160, 80]
+            },
+            {
+              "id": "pdmx-m1-e2",
+              "pitch": "B4",
+              "accidental": null,
+              "duration": [1, 8],
+              "dots": 0,
+              "position": [240, 88]
+            },
+            {
+              "id": "pdmx-m1-e3",
+              "pitch": "B4",
+              "accidental": null,
+              "duration": [1, 8],
+              "dots": 0,
+              "position": [295, 88]
+            },
+            {
+              "id": "pdmx-m1-e4",
+              "pitch": "A4",
+              "accidental": null,
+              "duration": [1, 2],
+              "dots": 0,
+              "position": [375, 96]
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "number": 2,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m2-e1",
+              "pitch": "B4",
+              "accidental": null,
+              "duration": [1, 2],
+              "dots": 0,
+              "position": [560, 88]
+            },
+            {
+              "id": "pdmx-m2-e2",
+              "pitch": null,
+              "accidental": null,
+              "duration": [1, 2],
+              "dots": 0,
+              "position": [710, 88]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "number": 3,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m3-e1",
+              "pitch": null,
+              "accidental": null,
+              "duration": [1, 1],
+              "dots": 0,
+              "position": [950, 88]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "number": 4,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m4-e1",
+              "pitch": null,
+              "accidental": null,
+              "duration": [1, 1],
+              "dots": 0,
+              "position": [1230, 88]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "number": 5,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m5-e1",
+              "pitch": "A4",
+              "accidental": null,
+              "duration": [1, 1],
+              "dots": 0,
+              "position": [1510, 96]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "number": 6,
+          "printedNumber": null,
+          "events": [
+            {
+              "id": "pdmx-m6-e1",
+              "pitch": "F4",
+              "accidental": "#",
+              "duration": [1, 4],
+              "dots": 0,
+              "position": [1740, 112]
+            },
+            {
+              "id": "pdmx-m6-e2",
+              "pitch": "F4",
+              "accidental": "#",
+              "duration": [1, 4],
+              "dots": 0,
+              "position": [1835, 112]
+            },
+            {
+              "id": "pdmx-m6-e3",
+              "pitch": "A4",
+              "accidental": null,
+              "duration": [1, 2],
+              "dots": 0,
+              "position": [1935, 96]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "directions": []
+}

@@ -9,6 +9,12 @@ import {
   Loader2,
   Layers,
 } from '../ui/icons';
+import { OmrReviewPanel } from './OmrReviewPanel';
+import {
+  applyOmrMeasureProposals,
+  inspectOmrMeasures,
+  refreshOmrSourceLinks,
+} from '../../omr/omrToScore';
 import { Score, KeySignature } from '../../types/music';
 import { importMusicXmlToScore } from '../../utils/musicxml';
 import { parseMidiToScore } from '../../utils/midiParser';
@@ -26,12 +32,11 @@ import { modalButton } from '../ui/modalButton';
 import { useToast } from '../ui/toastContext';
 import { normalizeScore } from '../../utils/scoreSchema';
 import { recognizeScoreFromFile, OmrProgress, OmrResult } from '../../omr/omrEngine';
-import { reconcileMeasuresForTimeSignature } from '../../omr/omrToScore';
 
 interface ImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportScore: (score: Score) => void;
+  onImportScore: (score: Score, session?: OmrResult) => void;
 }
 
 const OMR_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'webp', 'svg']);
@@ -48,7 +53,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [selectedKey, setSelectedKey] = useState<KeySignature>('C');
   const [keyConfidence, setKeyConfidence] = useState<number>(100);
   const [transposeNotes, setTransposeNotes] = useState<boolean>(true);
-  const [selectedTimeSignature, setSelectedTimeSignature] = useState<{ beats: number; beatType: number }>({
+  const [selectedTimeSignature, setSelectedTimeSignature] = useState<{
+    beats: number;
+    beatType: number;
+  }>({
     beats: 4,
     beatType: 4,
   });
@@ -58,11 +66,38 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [omrProgress, setOmrProgress] = useState<OmrProgress | null>(null);
   const [omrSummary, setOmrSummary] = useState<OmrResult | null>(null);
 
+  const [acceptedProposals, setAcceptedProposals] = useState<string[]>([]);
+  const neuralResult = omrSummary?.sourceType === 'neural-onnx';
+  const measureAnalysis =
+    parsedScore && neuralResult ? inspectOmrMeasures(parsedScore, omrSummary.sourceLinks) : null;
+  const previewScore =
+    parsedScore && neuralResult
+      ? applyOmrMeasureProposals(parsedScore, acceptedProposals)
+      : parsedScore;
+  const reviewResult =
+    omrSummary && previewScore
+      ? {
+          ...omrSummary,
+          warnings: [
+            ...omrSummary.warnings.filter(
+              (w) => !['measure-overfull', 'measure-underfull'].includes(w.code)
+            ),
+            ...(neuralResult
+              ? inspectOmrMeasures(
+                  previewScore,
+                  refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks)
+                ).warnings
+              : []),
+          ],
+        }
+      : null;
+
   if (!isOpen) return null;
 
   const handleProcessFile = async (file: File) => {
     setErrorMessage(null);
     setOmrSummary(null);
+    setAcceptedProposals([]);
 
     if (file.size > MAX_IMPORT_BYTES) {
       toast.warning(
@@ -118,7 +153,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       const keyResult = detectKeyFromScore(normalized);
       setParsedScore(normalized);
       setDetectedKey(keyResult.key);
-      setSelectedKey(keyResult.key);
+      setSelectedKey(normalized.keySignature);
       setKeyConfidence(keyResult.confidence);
       setSelectedTimeSignature(normalized.timeSignature);
       setSelectedTempo(normalized.tempo);
@@ -138,15 +173,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const handleTimeSignatureChange = (newBeats: number, newBeatType: number) => {
     const newTs = { beats: newBeats, beatType: newBeatType };
     setSelectedTimeSignature(newTs);
+    setAcceptedProposals([]);
     if (!parsedScore) return;
-    const updatedStaves = parsedScore.staves.map((st) => ({
-      ...st,
-      measures: reconcileMeasuresForTimeSignature(st.measures, newTs),
-    }));
     setParsedScore({
       ...parsedScore,
       timeSignature: newTs,
-      staves: updatedStaves,
     });
   };
 
@@ -174,13 +205,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const handleConfirmImport = () => {
     if (!parsedScore) return;
 
-    let finalScore = parsedScore;
+    let finalScore = previewScore ?? parsedScore;
     if (selectedKey !== parsedScore.keySignature) {
       if (transposeNotes) {
-        const semitones = getSemitoneOffsetBetweenKeys(parsedScore.keySignature, selectedKey);
-        finalScore = transposeScoreNotes(parsedScore, semitones, selectedKey);
+        const semitones = getSemitoneOffsetBetweenKeys(finalScore.keySignature, selectedKey);
+        finalScore = transposeScoreNotes(finalScore, semitones, selectedKey);
       } else {
-        finalScore = { ...parsedScore, keySignature: selectedKey };
+        finalScore = { ...finalScore, keySignature: selectedKey };
       }
     }
 
@@ -188,13 +219,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       finalScore = { ...finalScore, tempo: selectedTempo };
     }
 
-    onImportScore(finalScore);
+    onImportScore(
+      finalScore,
+      reviewResult?.sourceType === 'neural-onnx'
+        ? {
+            ...reviewResult,
+            score: finalScore,
+            sourceLinks: refreshOmrSourceLinks(finalScore, reviewResult.sourceLinks),
+            recognizedScore: omrSummary?.score,
+            acceptedProposals: measureAnalysis?.proposals.filter((proposal) =>
+              acceptedProposals.includes(proposal.measureId)
+            ),
+          }
+        : undefined
+    );
     toast.success('Partitura importada', 'La partitura se ha cargado en el editor.');
     handleClose();
   };
 
   const handleReset = () => {
     setParsedScore(null);
+    setAcceptedProposals([]);
     setErrorMessage(null);
     setIsRunningOmr(false);
     setOmrProgress(null);
@@ -325,11 +370,12 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 Arrastra tu partitura aquí o haz clic para explorar
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Formatos compatibles: .pdf, .png, .jpg, .svg, .musicxml, .xml, .mid, .json (máx. 16 MB)
+                Formatos compatibles: .pdf, .png, .jpg, .svg, .musicxml, .xml, .mid, .json (máx. 16
+                MB)
               </p>
               <span className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-100/80 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/50">
                 <Layers className="w-3 h-3" />
-                <span>Incluye lector OMR neuronal 100% offline para PDF e imágenes</span>
+                <span>Lectura OMR local para PDF e imágenes</span>
               </span>
             </div>
           )}
@@ -358,14 +404,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   {omrSummary && (
                     <span className="font-mono text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                       {omrSummary.sourceType === 'lossless-metadata'
-                        ? 'Fidelidad Nativa 100%'
-                        : `OMR ONNX ${DOT_SEPARATOR} ${omrSummary.confidence}% precisión ${DOT_SEPARATOR} ${omrSummary.stavesDetected} pauta(s)`}
+                        ? 'Restauración nativa'
+                        : `OMR ONNX ${DOT_SEPARATOR} ${omrSummary.confidence}% confianza del reconocimiento ${DOT_SEPARATOR} ${omrSummary.stavesDetected} pauta(s)`}
                     </span>
                   )}
                 </div>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  {parsedScore.staves[0]?.measures.length || 0} compases {DOT_SEPARATOR} {totalNotes}{' '}
-                  notas {DOT_SEPARATOR} {parsedScore.timeSignature.beats}/
+                  {parsedScore.staves[0]?.measures.length || 0} compases {DOT_SEPARATOR}{' '}
+                  {totalNotes} notas {DOT_SEPARATOR} {parsedScore.timeSignature.beats}/
                   {parsedScore.timeSignature.beatType} {DOT_SEPARATOR} {QUARTER_NOTE_GLYPH} ={' '}
                   {parsedScore.tempo} BPM
                 </p>
@@ -381,6 +427,39 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               <RotateCcw className="w-4 h-4" />
             </button>
           </div>
+
+          {reviewResult && <OmrReviewPanel result={reviewResult} />}
+          {measureAnalysis && measureAnalysis.proposals.length > 0 && (
+            <fieldset className="space-y-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5 text-xs">
+              <legend className="font-semibold">
+                Propuestas de división — requieren comprobar la fuente
+              </legend>
+              {measureAnalysis.proposals.map((proposal) => {
+                const staff = parsedScore.staves.find((st) => st.id === proposal.staffId)!;
+                const number = staff.measures.findIndex((m) => m.id === proposal.measureId) + 1;
+                return (
+                  <label key={proposal.measureId} className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={acceptedProposals.includes(proposal.measureId)}
+                      onChange={(event) =>
+                        setAcceptedProposals((ids) =>
+                          event.target.checked
+                            ? [...ids, proposal.measureId]
+                            : ids.filter((id) => id !== proposal.measureId)
+                        )
+                      }
+                    />
+                    <span>
+                      Dividir compás {number} de {staff.name} en {proposal.replacement.length}{' '}
+                      compases. {proposal.reason}
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
 
           {/* Meter & Tempo Quick Controls */}
           <div className="p-3.5 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated">
@@ -480,7 +559,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             </div>
 
             {/* Transpose checkbox */}
-            {selectedKey !== detectedKey && (
+            {selectedKey !== parsedScore.keySignature && (
               <div className="mt-3 pt-2.5 border-t border-amber-200/60 dark:border-amber-900/30 flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -494,7 +573,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   className="text-xs text-slate-800 dark:text-slate-200 cursor-pointer font-medium"
                 >
                   Transponer automáticamente las notas a la nueva tonalidad (
-                  {getSemitoneOffsetBetweenKeys(detectedKey, selectedKey)} semitonos)
+                  {getSemitoneOffsetBetweenKeys(parsedScore.keySignature, selectedKey)} semitonos)
                 </label>
               </div>
             )}
