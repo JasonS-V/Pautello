@@ -372,4 +372,90 @@ describe('omrDecode & omrToScore pipeline', () => {
     // Los compases sobrecargados con blancas deben haberse subdividido
     expect(summary.score.staves[0].measures.length).toBeGreaterThanOrEqual(4);
   });
+
+  it('detecta compás 3/4, tempo 60, tonalidad Do Mayor y systemBreak en partituras tipo El Rey', () => {
+    const staff1: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 0,
+      bbox: [0, 0, 1000, 100],
+      lineSpacingPx: 12,
+      normSpacing: 10,
+    };
+    const staff2: OmrStaffMeta = {
+      page: 1,
+      system: 1,
+      staffIndex: 0,
+      bbox: [0, 150, 1000, 100],
+      lineSpacingPx: 12,
+      normSpacing: 10,
+    };
+
+    // Línea 1: falsa armadura de 1 sostenido emitida por modelo debido a un Segno, pero las notas están en Do
+    const tokensLine1 = makeEventsFromSubtokens([
+      '*clefF4',
+      '<b>',
+      '*k[f#]', // falso positivo
+      '<b>',
+      '2',
+      'D', // blanca en 3/4 debe promoverse a blanca con puntillo
+      '<b>',
+      '=',
+      '<b>',
+      '2',
+      'D',
+      '<b>',
+      '=',
+    ]);
+
+    // Línea 2: notas en Do mayor (G, C, E, G)
+    const tokensLine2 = makeEventsFromSubtokens([
+      '*clefF4',
+      '<b>',
+      '4',
+      'C',
+      '<b>',
+      '4',
+      'E',
+      '<b>',
+      '4',
+      'G',
+      '<b>',
+      '==',
+    ]);
+
+    const frags1 = lineFragment(tokensLine1, staff1);
+    const frags2 = lineFragment(tokensLine2, staff2);
+    const ir = assembleIR([
+      { staff: staff1, elements: frags1 },
+      { staff: staff2, elements: frags2 },
+    ]);
+
+    const summary = convertOmrIrToScore(ir, {
+      title: 'El Rey',
+      subtitle: 'Bajo',
+      composer: 'José Alfredo Jiménez',
+      tempo: 60,
+      keySignature: 'C',
+      genre: 'valseada',
+    });
+
+    // Métrica debe ser 3/4 por el género valseada
+    expect(summary.score.timeSignature).toEqual({ beats: 3, beatType: 4 });
+    // Tonalidad debe ser Do Mayor
+    expect(summary.score.keySignature).toBe('C');
+    // Tempo debe ser 60 BPM
+    expect(summary.score.tempo).toBe(60);
+
+    // Las blancas en compás de 3/4 deben ser promovidas a blancas con puntillo
+    const m0 = summary.score.staves[0].measures[0];
+    expect(m0.items[0]).toMatchObject({
+      type: 'note',
+      duration: 'h',
+      isDotted: true,
+    });
+
+    // La última medida del sistema 0 debe tener systemBreak: true
+    expect(summary.score.staves[0].measures[1].systemBreak).toBe(true);
+  });
 });

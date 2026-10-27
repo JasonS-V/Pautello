@@ -26,6 +26,7 @@ import { modalButton } from '../ui/modalButton';
 import { useToast } from '../ui/toastContext';
 import { normalizeScore } from '../../utils/scoreSchema';
 import { recognizeScoreFromFile, OmrProgress, OmrResult } from '../../omr/omrEngine';
+import { reconcileMeasuresForTimeSignature } from '../../omr/omrToScore';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -47,6 +48,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [selectedKey, setSelectedKey] = useState<KeySignature>('C');
   const [keyConfidence, setKeyConfidence] = useState<number>(100);
   const [transposeNotes, setTransposeNotes] = useState<boolean>(true);
+  const [selectedTimeSignature, setSelectedTimeSignature] = useState<{ beats: number; beatType: number }>({
+    beats: 4,
+    beatType: 4,
+  });
+  const [selectedTempo, setSelectedTempo] = useState<number>(120);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRunningOmr, setIsRunningOmr] = useState<boolean>(false);
   const [omrProgress, setOmrProgress] = useState<OmrProgress | null>(null);
@@ -114,6 +120,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       setDetectedKey(keyResult.key);
       setSelectedKey(keyResult.key);
       setKeyConfidence(keyResult.confidence);
+      setSelectedTimeSignature(normalized.timeSignature);
+      setSelectedTempo(normalized.tempo);
       toast.success(
         'Partitura leída',
         `"${normalized.title || file.name}" se ha cargado para revisión.`
@@ -124,6 +132,29 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       setErrorMessage(msg);
       setParsedScore(null);
       toast.error('Error de importación', msg);
+    }
+  };
+
+  const handleTimeSignatureChange = (newBeats: number, newBeatType: number) => {
+    const newTs = { beats: newBeats, beatType: newBeatType };
+    setSelectedTimeSignature(newTs);
+    if (!parsedScore) return;
+    const updatedStaves = parsedScore.staves.map((st) => ({
+      ...st,
+      measures: reconcileMeasuresForTimeSignature(st.measures, newTs),
+    }));
+    setParsedScore({
+      ...parsedScore,
+      timeSignature: newTs,
+      staves: updatedStaves,
+    });
+  };
+
+  const handleTempoChange = (rawVal: number) => {
+    const valid = Math.max(30, Math.min(300, rawVal || 120));
+    setSelectedTempo(valid);
+    if (parsedScore) {
+      setParsedScore({ ...parsedScore, tempo: valid });
     }
   };
 
@@ -151,6 +182,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       } else {
         finalScore = { ...parsedScore, keySignature: selectedKey };
       }
+    }
+
+    if (selectedTempo !== finalScore.tempo) {
+      finalScore = { ...finalScore, tempo: selectedTempo };
     }
 
     onImportScore(finalScore);
@@ -345,6 +380,66 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             >
               <RotateCcw className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Meter & Tempo Quick Controls */}
+          <div className="p-3.5 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Compás / Métrica:
+                </span>
+                <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-200/80 dark:bg-studio-surface border border-slate-300/80 dark:border-studio-lineSoft">
+                  {[
+                    { beats: 3, beatType: 4, label: '3/4' },
+                    { beats: 4, beatType: 4, label: '4/4' },
+                    { beats: 2, beatType: 4, label: '2/4' },
+                    { beats: 6, beatType: 8, label: '6/8' },
+                  ].map((ts) => {
+                    const isSelected =
+                      selectedTimeSignature.beats === ts.beats &&
+                      selectedTimeSignature.beatType === ts.beatType;
+                    return (
+                      <button
+                        key={`${ts.beats}/${ts.beatType}`}
+                        type="button"
+                        onClick={() => handleTimeSignatureChange(ts.beats, ts.beatType)}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-white dark:bg-studio-elevated text-amber-700 dark:text-amber-400 shadow-sm border border-slate-200 dark:border-studio-lineSoft'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                        }`}
+                      >
+                        {ts.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="import-tempo-input"
+                  className="text-xs font-semibold text-slate-700 dark:text-slate-300 shrink-0"
+                >
+                  Tempo:
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    id="import-tempo-input"
+                    type="number"
+                    min={30}
+                    max={300}
+                    value={selectedTempo}
+                    onChange={(e) => handleTempoChange(parseInt(e.target.value, 10))}
+                    className="w-16 px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-studio-surface border border-slate-300 dark:border-studio-lineSoft rounded-lg text-center focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 outline-none"
+                  />
+                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    BPM
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Key Detection Panel */}

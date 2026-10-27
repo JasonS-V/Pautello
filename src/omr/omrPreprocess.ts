@@ -13,7 +13,7 @@
 export const INK_THRESHOLD = 0.6;
 export const TARGET_SPACING = 10.0;
 export const TARGET_HEIGHT = 128;
-export const MAX_WIDTH = 1400;
+export const MAX_WIDTH = 3600;
 
 const fr = Math.fround;
 
@@ -704,13 +704,34 @@ export function preprocessPage(
       }
     }
 
-    // Suprimir texto o números de compás periféricos fuera de la pauta en la esquina superior izquierda
-    // para evitar que números como "11", "39" o indicaciones de ensayo contaminen la clave musical
-    const clefMarginW = Math.round(Math.min(box.w * 0.15, box.lineSpacing * 10));
-    const textCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 2.4));
-    for (let y = 0; y < textCeiling; y++) {
+    // Suprimir elementos periféricos fuera de la pauta que confunden a la red neuronal:
+    // 1. En la zona de clave y armadura (primer 20% del pentagrama), borrar cualquier símbolo
+    //    situado por encima de la clave (> 0.95 espacios sobre la primera línea), como el Segno 𝄋,
+    //    para evitar que se interprete erróneamente como un sostenido (F#).
+    const clefMarginW = Math.round(Math.min(box.w * 0.2, box.lineSpacing * 12));
+    const clefCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 0.95));
+    for (let y = 0; y < clefCeiling; y++) {
       const rowDst = y * box.w;
       for (let x = 0; x < clefMarginW; x++) {
+        crop[rowDst + x] = 1.0;
+      }
+    }
+
+    // 2. A lo largo del resto del pentagrama, suprimir texto, números de compás (ej. 11, 19, 28, 39, 50, 52),
+    //    letras de ensayo [A], [B], indicaciones de tempo o modulación métrica situadas por encima de las notas (> 1.8 espacios).
+    const staffCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 1.8));
+    for (let y = 0; y < staffCeiling; y++) {
+      const rowDst = y * box.w;
+      for (let x = clefMarginW; x < box.w; x++) {
+        crop[rowDst + x] = 1.0;
+      }
+    }
+
+    // 3. Suprimir notas al pie, texto de copyright o pies de página por debajo de 1.8 espacios de la quinta línea.
+    const staffFloor = Math.min(box.h, box.padUp + Math.round(box.lineSpacing * 5.8));
+    for (let y = staffFloor; y < box.h; y++) {
+      const rowDst = y * box.w;
+      for (let x = 0; x < box.w; x++) {
         crop[rowDst + x] = 1.0;
       }
     }

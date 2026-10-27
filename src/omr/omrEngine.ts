@@ -134,9 +134,14 @@ function extractHintsFromPdfTextItems(
   const cleanTitleFallback = fallbackFileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
 
   const fullText = items.map((i) => i.str).join(' ');
+  hints.fullText = fullText;
+
+  // 1. Detección de Tempo / BPM
+  // Busca expresiones como 'd. = 60', '♩ = 90', 'q = 120', 'Tempo = 60', '= 60', '60 BPM', etc.
   const bpmMatch =
-    /(?:\u2669|\u266A|q|h)\s*=\s*(\d{2,3})/i.exec(fullText) ||
-    /\b(\d{2,3})\s*BPM\b/i.exec(fullText);
+    /(?:♩|♪|𝅗𝅥|𝅘𝅥|𝅗𝅥\.|q|h|d|j|\u2669|\u266A|[\uE1D0-\uE1EF])?\s*=\s*(\d{2,3})/i.exec(fullText) ||
+    /\b(?:tempo|m\.m\.|bpm)\s*[:=]?\s*(\d{2,3})\b/i.exec(fullText) ||
+    /(?:^|\s)=\s*(\d{2,3})\b/.exec(fullText);
   if (bpmMatch) {
     const parsedBpm = parseInt(bpmMatch[1], 10);
     if (parsedBpm >= 30 && parsedBpm <= 300) {
@@ -144,7 +149,94 @@ function extractHintsFromPdfTextItems(
     }
   }
 
-  // En coordenadas PDF estándar (y crece hacia arriba), la cabecera está en y > pageHeight * 0.72
+  // 2. Detección de Compás (Métrica / Time Signature)
+  // Expresiones de género como "Ranchera Valseada", "Vals" o "Waltz" indican compás ternario 3/4
+  if (/\b(valseada|vals|waltz)\b/i.test(fullText)) {
+    hints.timeSignature = { beats: 3, beatType: 4 };
+    hints.genre = 'vals';
+  } else if (/\b3\/4\b/.test(fullText)) {
+    hints.timeSignature = { beats: 3, beatType: 4 };
+  } else if (/\b2\/4\b/.test(fullText)) {
+    hints.timeSignature = { beats: 2, beatType: 4 };
+  } else if (/\b6\/8\b/.test(fullText)) {
+    hints.timeSignature = { beats: 6, beatType: 8 };
+  } else if (/\b4\/4\b/.test(fullText)) {
+    hints.timeSignature = { beats: 4, beatType: 4 };
+  }
+
+  // 3. Detección de Tonalidad (Key Signature)
+  // Ejemplos comunes en partituras de mariachi y ensambles vocales:
+  // '"Do" - Male Singer', '"Sol"', 'Tono: Do', 'Key: C', 'Do Mayor', etc.
+  const keyLabelMatch =
+    /["“](Do|Re|Mi|Fa|Sol|La|Si|[A-G])([#b♯♭]?)(m|min|menor|minor)?["”]/i.exec(fullText) ||
+    /\b(?:tono|ton|key|tonalidad)\s*[:=]?\s*([A-Ga-g]|Do|Re|Mi|Fa|Sol|La|Si)([#b♯♭]?)(m|min|menor|minor|maj|mayor|major)?\b/i.exec(
+      fullText
+    ) ||
+    /\b(Do|Re|Mi|Fa|Sol|La|Si)\s+(Mayor|Menor)\b/i.exec(fullText);
+
+  if (keyLabelMatch) {
+    const noteRoot = keyLabelMatch[1].toLowerCase();
+    const rawAcc = keyLabelMatch[2] || '';
+    const isMin = Boolean(keyLabelMatch[3] && /m|min|menor|minor/i.test(keyLabelMatch[3]));
+    const ROOT_MAP: Record<string, string> = {
+      do: 'C',
+      c: 'C',
+      re: 'D',
+      d: 'D',
+      mi: 'E',
+      e: 'E',
+      fa: 'F',
+      f: 'F',
+      sol: 'G',
+      g: 'G',
+      la: 'A',
+      a: 'A',
+      si: 'B',
+      b: 'B',
+    };
+    const letter = ROOT_MAP[noteRoot];
+    if (letter) {
+      let accStr = '';
+      if (rawAcc === '#' || rawAcc === '♯') accStr = '#';
+      else if (rawAcc === 'b' || rawAcc === '♭') accStr = 'b';
+      const keyCandidate = `${letter}${accStr}${isMin ? 'm' : ''}`;
+      const validKeys = new Set([
+        'C',
+        'G',
+        'D',
+        'A',
+        'E',
+        'B',
+        'F#',
+        'C#',
+        'F',
+        'Bb',
+        'Eb',
+        'Ab',
+        'Db',
+        'Gb',
+        'Cb',
+        'Am',
+        'Em',
+        'Bm',
+        'F#m',
+        'C#m',
+        'G#m',
+        'D#m',
+        'Dm',
+        'Gm',
+        'Cm',
+        'Fm',
+        'Bbm',
+        'Ebm',
+      ]);
+      if (validKeys.has(keyCandidate)) {
+        hints.keySignature = keyCandidate as import('../types/music').KeySignature;
+      }
+    }
+  }
+
+  // En coordenadas PDF estándar (y crece hacia arriba), la cabecera está en y > pageHeight * 0.55
   const headerItems = items
     .map((it) => ({ ...it, str: it.str.trim() }))
     .filter(
@@ -152,7 +244,7 @@ function extractHintsFromPdfTextItems(
         it.str.length >= 2 &&
         !/^PAUTELLO_V1:/i.test(it.str) &&
         !/^\d+$/.test(it.str) &&
-        it.y >= pageHeight * 0.7
+        it.y >= pageHeight * 0.55
     );
 
   if (headerItems.length > 0) {
@@ -163,9 +255,9 @@ function extractHintsFromPdfTextItems(
     }
 
     const rightItems = headerItems
-      .filter((it) => it !== titleCandidate && it.x > pageWidth * 0.52)
+      .filter((it) => it !== titleCandidate && it.x > pageWidth * 0.50)
       .sort((a, b) => b.y - a.y);
-    if (rightItems.length > 0 && rightItems[0].str.length <= 60) {
+    if (rightItems.length > 0 && rightItems[0].str.length <= 80) {
       hints.composer = rightItems[0].str;
     }
   }

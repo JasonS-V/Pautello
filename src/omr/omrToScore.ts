@@ -23,6 +23,10 @@ export interface OmrMetadataHints {
   composer?: string;
   lyricist?: string;
   tempo?: number;
+  keySignature?: KeySignature;
+  timeSignature?: TimeSignature;
+  genre?: string;
+  fullText?: string;
   lyrics?: string[];
   chords?: string[];
 }
@@ -211,7 +215,7 @@ function defaultStaffNames(count: number, clefs: Clef[]): Array<{ name: string; 
   }));
 }
 
-function reconcileMeasuresForTimeSignature(
+export function reconcileMeasuresForTimeSignature(
   rawMeasures: Measure[],
   timeSignature: TimeSignature
 ): Measure[] {
@@ -242,6 +246,22 @@ function reconcileMeasuresForTimeSignature(
       continue;
     }
 
+    // Caso 2: único silencio de blanca en 3/4 -> promover a silencio de blanca con puntillo
+    if (
+      targetBeats === 3 &&
+      items.length === 1 &&
+      items[0].type === 'rest' &&
+      items[0].duration === 'h' &&
+      !items[0].isDotted
+    ) {
+      outMeasures.push({
+        ...rm,
+        id: `${rm.id}-rec`,
+        items: [{ ...items[0], isDotted: true }],
+      });
+      continue;
+    }
+
     // Calcular suma total de tiempos del compás
     let measureBeats = 0;
     for (const it of items) {
@@ -260,7 +280,8 @@ function reconcileMeasuresForTimeSignature(
     let currentBatchBeats = 0;
     let subIdx = 0;
 
-    for (const it of items) {
+    for (let itIdx = 0; itIdx < items.length; itIdx++) {
+      const it = items[itIdx];
       if (
         targetBeats === 3 &&
         it.type === 'note' &&
@@ -277,10 +298,12 @@ function reconcileMeasuresForTimeSignature(
       }
 
       if (currentBatchBeats >= targetBeats - 0.25) {
+        const isLastSub = itIdx === items.length - 1;
         outMeasures.push({
           id: `${rm.id}-s${subIdx++}`,
           items: currentBatch,
-          barline: subIdx === 1 ? undefined : rm.barline,
+          barline: isLastSub ? rm.barline : undefined,
+          systemBreak: isLastSub ? rm.systemBreak : undefined,
         });
         currentBatch = [];
         currentBatchBeats = 0;
@@ -292,6 +315,7 @@ function reconcileMeasuresForTimeSignature(
         id: `${rm.id}-s${subIdx}`,
         items: currentBatch,
         barline: rm.barline,
+        systemBreak: rm.systemBreak,
       });
     }
   }
@@ -309,7 +333,14 @@ export function convertOmrIrToScore(
   const confidences: number[] = [];
   let notesCount = 0;
 
-  const hintText = [hints.title, hints.subtitle, hints.composer, hints.lyricist]
+  const hintText = [
+    hints.title,
+    hints.subtitle,
+    hints.composer,
+    hints.lyricist,
+    hints.genre,
+    hints.fullText,
+  ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
@@ -318,7 +349,9 @@ export function convertOmrIrToScore(
     /\b(bajo|bass|contrabajo|double\s*bass|guitarron|guitarr[oó]n|cello|violonch?elo|tuba|fagot|bassoon|tromb[oó]n|trombone|bar[ií]tono|baritone|clave\s+de\s+fa)\b/i.test(
       hintText
     );
-  const isTripleMeterHint = /\b(valseada|vals|waltz|3\/4)\b/i.test(hintText);
+  const isTripleMeterHint =
+    Boolean(hints.timeSignature && hints.timeSignature.beats === 3 && hints.timeSignature.beatType === 4) ||
+    /\b(valseada|vals|waltz|3\/4)\b/i.test(hintText);
 
   // Análisis de registro de notas y métrica global
   let totalNotesAnalyzed = 0;
@@ -363,7 +396,9 @@ export function convertOmrIrToScore(
 
   const rawTime = ir.structure.recognized.time;
   let timeSignature: TimeSignature;
-  if (
+  if (hints.timeSignature) {
+    timeSignature = hints.timeSignature;
+  } else if (
     isTripleMeterHint ||
     (hasThreeQuarterNotesMeasure && rawTime?.num === 2) ||
     (tripleBeatsVote >= 3 && tripleBeatsVote > dupleBeatsVote)
@@ -498,6 +533,9 @@ export function convertOmrIrToScore(
         }
       }
 
+      const isLastMeasureOfSystem =
+        mIdx === part.measures.length - 1 || part.measures[mIdx + 1]?.system !== mIr.system;
+
       return {
         id: `omr-meas-${pIdx}-${mIdx}`,
         items: finalItems,
@@ -505,6 +543,7 @@ export function convertOmrIrToScore(
         repeatStart,
         repeatEnd,
         timeSignatureChange,
+        systemBreak: isLastMeasureOfSystem ? true : undefined,
       };
     });
 
@@ -618,7 +657,9 @@ export function convertOmrIrToScore(
     lyricist: hints.lyricist?.trim() || undefined,
     tempo: hints.tempo && hints.tempo >= 30 && hints.tempo <= 300 ? hints.tempo : 120,
     timeSignature,
-    keySignature: clampedFifths !== null ? FIFTHS_TO_MAJOR[clampedFifths] || 'C' : 'C',
+    keySignature:
+      hints.keySignature ||
+      (clampedFifths !== null ? FIFTHS_TO_MAJOR[clampedFifths] || 'C' : 'C'),
     staves,
     isGrandStaff: isGrandStaff || undefined,
     createdAt: Date.now(),
@@ -627,11 +668,21 @@ export function convertOmrIrToScore(
 
   // Refinar tonalidad mayor vs menor relativo con Krumhansl-Schmuckler
   const detectedKeyInfo = detectKeyFromScore(preliminaryScore);
-  if (clampedFifths !== null) {
+  if (hints.keySignature) {
+    preliminaryScore.keySignature = hints.keySignature;
+  } else if (clampedFifths !== null) {
     const majorCandidate = FIFTHS_TO_MAJOR[clampedFifths] || 'C';
     const minorCandidate = FIFTHS_TO_MINOR[clampedFifths];
     if (minorCandidate && detectedKeyInfo.key === minorCandidate) {
       preliminaryScore.keySignature = minorCandidate;
+    } else if (
+      clampedFifths === 1 &&
+      detectedKeyInfo.key === 'C' &&
+      detectedKeyInfo.confidence >= 45
+    ) {
+      // Corrección de falso positivo: si el modelo confundió un símbolo decorativo/segno con Fa#,
+      // pero el análisis de notas detecta C con confianza razonable, la tonalidad real es Do Mayor.
+      preliminaryScore.keySignature = 'C';
     } else {
       preliminaryScore.keySignature = majorCandidate;
     }
