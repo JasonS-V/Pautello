@@ -25,7 +25,9 @@ export function useMicPitch(options: UseMicPitchOptions = {}) {
   // navegador muestra el diálogo de permiso).
   const sessionIdRef = useRef<number>(0);
   const callbackRef = useRef(options.onPitchDetected);
-  callbackRef.current = options.onPitchDetected;
+  useEffect(() => {
+    callbackRef.current = options.onPitchDetected;
+  }, [options.onPitchDetected]);
 
   const minVolumeRms = options.minVolumeRms ?? 0.015;
 

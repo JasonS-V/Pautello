@@ -33,7 +33,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
   const shortcutGroups: ShortcutGroup[] = useMemo(
     () => [
       {
-        category: `🎹 Modo Piano QWERTY ${keyboardMode === 'piano' ? '(ACTIVO)' : ''}`,
+        category: `Modo Piano QWERTY ${keyboardMode === 'piano' ? '(ACTIVO)' : ''}`,
         items: [
           {
             key: 'A, S, D, F, G, H, J, K, L',
@@ -51,7 +51,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({
         ],
       },
       {
-        category: `🎼 Modo Notación Clásica ${keyboardMode === 'notation' ? '(ACTIVO)' : ''}`,
+        category: `Modo Notación Clásica ${keyboardMode === 'notation' ? '(ACTIVO)' : ''}`,
         items: [
           {
             key: 'A, B, C, D, E, F, G',

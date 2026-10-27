@@ -127,6 +127,17 @@ export class ScorePlayer {
   private hasExecutedDaCapo: boolean = false;
   private hasExecutedDalSegno: boolean = false;
   private listeners: ((state: PlaybackState) => void)[] = [];
+  private currentSnapshot: PlaybackState = {
+    isPlaying: false,
+    isPaused: false,
+    currentMeasureIndex: 0,
+    currentItemIndex: -1,
+    currentBeat: 0,
+  };
+
+  public getSnapshot(): PlaybackState {
+    return this.currentSnapshot;
+  }
 
   // Lookahead settings (120ms buffer, 25ms tick interval)
   private readonly scheduleAheadTime: number = 0.12;
@@ -168,14 +179,14 @@ export class ScorePlayer {
   }
 
   private notify() {
-    const state: PlaybackState = {
+    this.currentSnapshot = {
       isPlaying: this.isPlaying,
       isPaused: this.isPaused,
       currentMeasureIndex: this.visualMeasureIndex,
       currentItemIndex: this.visualItemIndex,
       currentBeat: 0,
     };
-    this.listeners.forEach((l) => l(state));
+    this.listeners.forEach((l) => l(this.currentSnapshot));
   }
 
   public play(startMeasure = 0, startItem = 0) {

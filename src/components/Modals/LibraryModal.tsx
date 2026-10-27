@@ -66,13 +66,37 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
     }
   }, [toast]);
 
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState<boolean>(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) {
-      fetchScores();
+      setLoading(true);
       setDeleteConfirmId(null);
       setActionLoadingId(null);
     }
-  }, [isOpen, fetchScores]);
+  }
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    listScoresFromLibrary()
+      .then((list) => {
+        if (!cancelled) {
+          setScores(list);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Error cargando lista de partituras:', err);
+          toast.error('Error de biblioteca', 'No se pudieron recuperar las partituras.');
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, toast]);
 
   const handleOpenScore = async (id: string) => {
     if (id === currentScoreId) {

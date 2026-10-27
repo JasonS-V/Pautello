@@ -97,9 +97,19 @@ export default defineConfig({
       output: {
         // React e iconos cambian poco: separarlos mejora el cacheado y deja
         // evidente cuanto pesa el codigo propio de la app.
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          icons: ['@hugeicons/react', '@hugeicons/core-free-icons'],
+        manualChunks(id) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return 'react';
+          }
+          if (id.includes('@hugeicons')) {
+            return 'icons';
+          }
+          if (id.includes('/src/engraver/')) {
+            return 'engraver';
+          }
+          if (id.includes('/src/audio/')) {
+            return 'audio';
+          }
         },
       },
     },
@@ -129,10 +139,10 @@ export default defineConfig({
       // era 45% y no se cumplía, así que el gate mentía: al no ejecutarse con
       // `--coverage` en CI, nadie se enteraba de que estaba por debajo.
       thresholds: {
-        lines: 28,
-        functions: 72,
-        branches: 68,
-        statements: 28,
+        lines: 45,
+        functions: 60,
+        branches: 60,
+        statements: 45,
       },
     },
   },

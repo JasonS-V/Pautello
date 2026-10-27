@@ -131,11 +131,7 @@ function setupIpcHandlers() {
   };
 
   ipcMain.handle('pautello:save-file', handleSaveFile);
-  ipcMain.handle('stavio:save-file', handleSaveFile);
-  ipcMain.handle('sonata:save-file', handleSaveFile);
   ipcMain.handle('pautello:print-to-pdf', handlePrintToPdf);
-  ipcMain.handle('stavio:print-to-pdf', handlePrintToPdf);
-  ipcMain.handle('sonata:print-to-pdf', handlePrintToPdf);
 }
 
 function createWindow() {

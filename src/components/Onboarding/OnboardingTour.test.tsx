@@ -60,7 +60,7 @@ describe('OnboardingTour: Tutorial de Bienvenida', () => {
     expect(screen.getByText('Modos de Entrada y Piano Virtual')).toBeDefined();
 
     // Seleccionar Modo Notación Clásica
-    const notationBtn = screen.getByText('🎼 Modo Notación Clásica');
+    const notationBtn = screen.getByText('Modo Notación Clásica');
     fireEvent.click(notationBtn);
     expect(onSelectMode).toHaveBeenCalledWith('notation');
   });

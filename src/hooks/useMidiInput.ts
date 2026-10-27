@@ -18,7 +18,9 @@ export function useMidiInput({
   onNoteOff,
   chordWindowMs = 35,
 }: UseMidiInputOptions) {
-  const [isSupported, setIsSupported] = useState<boolean>(false);
+  const [isSupported, setIsSupported] = useState<boolean>(() => {
+    return typeof navigator !== 'undefined' && typeof navigator.requestMIDIAccess === 'function';
+  });
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectedDevices, setConnectedDevices] = useState<string[]>([]);
   const [lastNote, setLastNote] = useState<{ midi: number; velocity: number } | null>(null);
@@ -93,12 +95,9 @@ export function useMidiInput({
   );
 
   useEffect(() => {
-    if (typeof navigator.requestMIDIAccess !== 'function') {
-      setIsSupported(false);
+    if (typeof navigator === 'undefined' || typeof navigator.requestMIDIAccess !== 'function') {
       return;
     }
-
-    setIsSupported(true);
 
     navigator
       .requestMIDIAccess({ sysex: false })

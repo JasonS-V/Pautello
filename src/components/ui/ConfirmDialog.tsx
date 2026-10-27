@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Trash2, X } from './icons';
 import { ModalBase } from './ModalBase';
 import { modalButton } from './modalButton';
@@ -36,11 +36,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onClose,
 }) => {
   const [step, setStep] = useState<1 | 2>(1);
+  const [prevIsOpen, setPrevIsOpen] = useState<boolean>(isOpen);
 
   // Cada apertura empieza en el paso 1: nunca se confirma en dos clics seguidos.
-  useEffect(() => {
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
     if (isOpen) setStep(1);
-  }, [isOpen]);
+  }
 
   const toneClasses =
     tone === 'danger'

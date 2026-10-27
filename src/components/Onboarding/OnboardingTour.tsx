@@ -228,29 +228,30 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
     }
   }, [step]);
 
-  // Medir la altura real del diálogo para anclarlo con precisión al borde
+  // Medir la altura real del diálogo y la posición del objetivo con requestAnimationFrame
   useEffect(() => {
     if (!isOpen) return;
-    if (dialogRef.current) {
-      setDialogHeight(dialogRef.current.offsetHeight);
-    }
-  }, [isOpen, currentStepIdx]);
+    let rafId: number;
 
-  useEffect(() => {
-    if (!isOpen) return;
-    updateTargetPosition();
-
-    const handleResize = () => {
+    const measure = () => {
       updateTargetPosition();
       if (dialogRef.current) {
         setDialogHeight(dialogRef.current.offsetHeight);
       }
     };
 
+    rafId = requestAnimationFrame(measure);
+
+    const handleResize = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(measure);
+    };
+
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', handleResize, true);
 
     return () => {
+      cancelAnimationFrame(rafId);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('scroll', handleResize, true);
     };
@@ -533,7 +534,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    🎹 Modo Piano QWERTY
+                    Modo Piano QWERTY
                   </span>
                   <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded-full">
                     Recomendado
@@ -574,7 +575,7 @@ export const OnboardingTour: React.FC<OnboardingTourProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    🎼 Modo Notación Clásica
+                    Modo Notación Clásica
                   </span>
                   <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
                     MuseScore / Sibelius

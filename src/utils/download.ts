@@ -24,21 +24,15 @@ export interface PautelloDesktopBridge {
   version: string;
 }
 
-/** Alias heredados de nombres anteriores; se conservan por compatibilidad. */
-export type StavioDesktopBridge = PautelloDesktopBridge;
-export type SonataDesktopBridge = PautelloDesktopBridge;
-
 declare global {
   interface Window {
     pautello?: PautelloDesktopBridge;
-    stavio?: PautelloDesktopBridge;
-    sonata?: PautelloDesktopBridge;
   }
 }
 
 export function getDesktopBridge(): PautelloDesktopBridge | null {
   if (typeof window === 'undefined') return null;
-  return window.pautello ?? window.stavio ?? window.sonata ?? null;
+  return window.pautello ?? null;
 }
 
 export function isDesktopApp(): boolean {

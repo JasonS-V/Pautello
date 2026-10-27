@@ -18,5 +18,3 @@ const bridge = {
 };
 
 contextBridge.exposeInMainWorld('pautello', bridge);
-contextBridge.exposeInMainWorld('stavio', bridge);
-contextBridge.exposeInMainWorld('sonata', bridge);
