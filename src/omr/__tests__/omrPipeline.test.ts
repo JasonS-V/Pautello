@@ -295,4 +295,81 @@ describe('omrDecode & omrToScore pipeline', () => {
     expect(summary.measuresCount).toBe(6);
     expect(summary.averageConfidence).toBeGreaterThanOrEqual(95);
   }, 20000);
+
+  it('reconcilia clave de Fa, descarta ligaduras espurias entre notas de diferente altura y ajusta compases en 3/4', () => {
+    const staffMeta: OmrStaffMeta = {
+      page: 1,
+      system: 0,
+      staffIndex: 0,
+      bbox: [0, 0, 1000, 100],
+      lineSpacingPx: 12,
+      normSpacing: 10,
+    };
+
+    // Tokens simulados con clave de Fa, métrica ternaria, notas graves con tokens de ligadura ruidosos entre alturas distintas
+    const tokens = makeEventsFromSubtokens([
+      '*clefF4',
+      '<b>',
+      '*M3/4',
+      '<b>',
+      '4',
+      'r',
+      '<b>',
+      '4',
+      'r',
+      '<b>',
+      '4',
+      'D',
+      '<b>',
+      '=',
+      '<b>',
+      '2',
+      'G',
+      '_',
+      '<b>',
+      '2',
+      'D',
+      '_',
+      '<b>',
+      '2',
+      'G',
+      '_',
+      '<b>',
+      '=',
+      '<b>',
+      '[',
+      '2',
+      'C',
+      '<b>',
+      '=',
+      '<b>',
+      '2',
+      'C',
+      ']',
+      '<b>',
+      '==',
+    ]);
+
+    const frags = lineFragment(tokens, staffMeta);
+    const ir = assembleIR([{ staff: staffMeta, elements: frags }]);
+    const summary = convertOmrIrToScore(ir, { title: 'El Rey', subtitle: 'Bajo' });
+
+    // Debe detectar Clave de Fa
+    expect(summary.score.staves[0].clef).toBe('bass');
+    expect(summary.score.timeSignature).toEqual({ beats: 3, beatType: 4 });
+
+    // La ligadura entre G y D debe ser descartada porque son alturas distintas
+    const allNotes = summary.score.staves[0].measures.flatMap((m) =>
+      m.items.filter((it) => it.type === 'note')
+    );
+    const gNotes = allNotes.filter((n) => n.pitch?.step === 'G');
+    expect(gNotes[0].isTied).toBeUndefined();
+
+    // La ligadura entre C3 y C3 (misma altura a través de compás) debe conservarse
+    const cNotes = allNotes.filter((n) => n.pitch?.step === 'C');
+    expect(cNotes[0].isTied).toBe(true);
+
+    // Los compases sobrecargados con blancas deben haberse subdividido
+    expect(summary.score.staves[0].measures.length).toBeGreaterThanOrEqual(4);
+  });
 });

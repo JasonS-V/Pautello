@@ -498,6 +498,7 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     parts.push({ index: i, label: null, measures: [] });
   }
   const openMeasures: Array<OmrMeasureIR | null> = new Array(m).fill(null);
+  const clefVotes: Array<Map<string, number>> = Array.from({ length: m }, () => new Map<string, number>());
   const structure = {
     stavesPerSystem: m,
     clefs: new Array<string | null>(m).fill(null),
@@ -548,9 +549,10 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
         if (el.keyFifths !== undefined) mm.attributes.keyFifths = el.keyFifths;
         if (el.time) mm.attributes.time = el.time;
 
-        if (el.clef && structure.clefs[p] === null) {
+        if (el.clef) {
           const c = el.clef;
-          structure.clefs[p] = c.sign + String(c.line) + (c.octaveChange < 0 ? 'v8' : '');
+          const clefKey = c.sign + String(c.line) + (c.octaveChange < 0 ? 'v8' : '');
+          clefVotes[p].set(clefKey, (clefVotes[p].get(clefKey) || 0) + 1);
         }
         if (el.keyFifths !== undefined && structure.keyFifths === null) {
           structure.keyFifths = el.keyFifths;
@@ -574,6 +576,22 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
         continue;
       }
       open(p, st.system).events.push(el);
+    }
+  }
+
+  // Asignar clave canónica por consenso mayoritario de todas las líneas del pentagrama
+  for (let p = 0; p < m; p++) {
+    const votes = clefVotes[p];
+    if (votes.size > 0) {
+      let bestClef: string | null = null;
+      let maxVotes = 0;
+      for (const [cKey, count] of votes.entries()) {
+        if (count > maxVotes) {
+          maxVotes = count;
+          bestClef = cKey;
+        }
+      }
+      structure.clefs[p] = bestClef;
     }
   }
 

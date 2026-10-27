@@ -174,6 +174,16 @@ function extractHintsFromPdfTextItems(
     hints.title = cleanTitleFallback;
   }
 
+  // Detección de instrumento o parte vocal/instrumental (ej. "Bajo", "Violín")
+  const instMatch =
+    /\b(bajo|bass|contrabajo|double\s*bass|guitarron|guitarr[oó]n|cello|violonch?elo|tuba|fagot|bassoon|tromb[oó]n|trombone|bar[ií]tono|baritone|viol[ií]n|violin|viola|flauta|flute|clarinete|trompeta|trumpet|guitarra|piano)\b/i.exec(
+      fullText || fallbackFileName
+    );
+  if (instMatch) {
+    const rawWord = instMatch[1];
+    hints.subtitle = rawWord.charAt(0).toUpperCase() + rawWord.slice(1).toLowerCase();
+  }
+
   return hints;
 }
 

@@ -145,12 +145,51 @@ function inferClefFromItems(measures: Measure[]): Clef {
   if (midis.length === 0) return 'treble';
   midis.sort((a, b) => a - b);
   const median = midis[Math.floor(midis.length / 2)];
-  return median < 55 ? 'bass' : 'treble';
+  // Do central (C4) es MIDI 60. El registro de clave de Fa se centra en Re3 (50) y Sol2 (43).
+  // Notas con mediana <= 60 pertenecen inconfundiblemente a la clave de Fa.
+  return median <= 60 ? 'bass' : 'treble';
+}
+
+function itemDurationToBeats(item: {
+  duration: NoteDuration;
+  isDotted?: boolean;
+  tuplet?: TupletInfo;
+}): number {
+  let base = 1.0;
+  switch (item.duration) {
+    case 'w':
+      base = 4.0;
+      break;
+    case 'h':
+      base = 2.0;
+      break;
+    case 'q':
+      base = 1.0;
+      break;
+    case '8':
+      base = 0.5;
+      break;
+    case '16':
+      base = 0.25;
+      break;
+    case '32':
+      base = 0.125;
+      break;
+  }
+  if (item.isDotted) {
+    base *= 1.5;
+  }
+  if (item.tuplet && item.tuplet.actual > 0) {
+    base *= item.tuplet.normal / item.tuplet.actual;
+  }
+  return base;
 }
 
 function defaultStaffNames(count: number, clefs: Clef[]): Array<{ name: string; shortName: string }> {
   if (count === 1) {
-    return [{ name: 'Voz / Melodía', shortName: 'Voz' }];
+    return clefs[0] === 'bass'
+      ? [{ name: 'Bajo', shortName: 'B.' }]
+      : [{ name: 'Voz / Melodía', shortName: 'Voz' }];
   }
   if (count === 2 && clefs[0] === 'treble' && clefs[1] === 'bass') {
     return [
@@ -172,6 +211,94 @@ function defaultStaffNames(count: number, clefs: Clef[]): Array<{ name: string; 
   }));
 }
 
+function reconcileMeasuresForTimeSignature(
+  rawMeasures: Measure[],
+  timeSignature: TimeSignature
+): Measure[] {
+  const targetBeats = timeSignature.beats * (4 / timeSignature.beatType);
+  const outMeasures: Measure[] = [];
+
+  for (let mIdx = 0; mIdx < rawMeasures.length; mIdx++) {
+    const rm = rawMeasures[mIdx];
+    const items = rm.items;
+    if (items.length === 0) {
+      outMeasures.push(rm);
+      continue;
+    }
+
+    // Caso 1: única blanca en 3/4 -> promover a blanca con puntillo (3 tiempos de compás completo)
+    if (
+      targetBeats === 3 &&
+      items.length === 1 &&
+      items[0].type === 'note' &&
+      items[0].duration === 'h' &&
+      !items[0].isDotted
+    ) {
+      outMeasures.push({
+        ...rm,
+        id: `${rm.id}-rec`,
+        items: [{ ...items[0], isDotted: true }],
+      });
+      continue;
+    }
+
+    // Calcular suma total de tiempos del compás
+    let measureBeats = 0;
+    for (const it of items) {
+      measureBeats += itemDurationToBeats(it);
+    }
+
+    // Si el compás cabe normalmente dentro de la capacidad métrica, conservarlo
+    if (measureBeats <= targetBeats + 0.35) {
+      outMeasures.push(rm);
+      continue;
+    }
+
+    // Si sobrepasa ampliamente la métrica (barras de compás omitidas por el CTC):
+    // dividir en compases individuales según la capacidad métrica
+    let currentBatch: ScoreItem[] = [];
+    let currentBatchBeats = 0;
+    let subIdx = 0;
+
+    for (const it of items) {
+      if (
+        targetBeats === 3 &&
+        it.type === 'note' &&
+        it.duration === 'h' &&
+        !it.isDotted &&
+        currentBatchBeats === 0
+      ) {
+        currentBatch.push({ ...it, isDotted: true });
+        currentBatchBeats += 3.0;
+      } else {
+        const itBeats = itemDurationToBeats(it);
+        currentBatch.push(it);
+        currentBatchBeats += itBeats;
+      }
+
+      if (currentBatchBeats >= targetBeats - 0.25) {
+        outMeasures.push({
+          id: `${rm.id}-s${subIdx++}`,
+          items: currentBatch,
+          barline: subIdx === 1 ? undefined : rm.barline,
+        });
+        currentBatch = [];
+        currentBatchBeats = 0;
+      }
+    }
+
+    if (currentBatch.length > 0) {
+      outMeasures.push({
+        id: `${rm.id}-s${subIdx}`,
+        items: currentBatch,
+        barline: rm.barline,
+      });
+    }
+  }
+
+  return outMeasures;
+}
+
 /**
  * Convierte la representación intermedia `OmrScoreIR` en un objeto `Score` de Pautello.
  */
@@ -182,11 +309,76 @@ export function convertOmrIrToScore(
   const confidences: number[] = [];
   let notesCount = 0;
 
+  const hintText = [hints.title, hints.subtitle, hints.composer, hints.lyricist]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const isBassHint =
+    /\b(bajo|bass|contrabajo|double\s*bass|guitarron|guitarr[oó]n|cello|violonch?elo|tuba|fagot|bassoon|tromb[oó]n|trombone|bar[ií]tono|baritone|clave\s+de\s+fa)\b/i.test(
+      hintText
+    );
+  const isTripleMeterHint = /\b(valseada|vals|waltz|3\/4)\b/i.test(hintText);
+
+  // Análisis de registro de notas y métrica global
+  let totalNotesAnalyzed = 0;
+  let bassRegisterNotes = 0;
+  let tripleBeatsVote = 0;
+  let dupleBeatsVote = 0;
+  let hasThreeQuarterNotesMeasure = false;
+
+  for (const part of ir.parts) {
+    for (const m of part.measures) {
+      let mBeats = 0;
+      let quarterCount = 0;
+      for (const ev of m.events) {
+        const { duration, isDotted } = mapDuration(ev.duration);
+        mBeats += itemDurationToBeats({ duration, isDotted });
+        if (duration === 'q' && !isDotted) quarterCount++;
+        if (ev.kind === 'note' && (ev.pitches || ev.pitch)) {
+          const p = ev.pitches ? ev.pitches[0] : ev.pitch!;
+          const midi = pitchToMidi(mapPitch(p));
+          totalNotesAnalyzed++;
+          if (midi <= 60) bassRegisterNotes++;
+        }
+      }
+      if (quarterCount === 3) {
+        hasThreeQuarterNotesMeasure = true;
+      }
+      if (
+        quarterCount === 3 ||
+        Math.abs(mBeats - 3.0) < 0.35 ||
+        (mBeats >= 5.5 && mBeats <= 6.5) ||
+        (mBeats >= 8.5 && mBeats <= 9.5)
+      ) {
+        tripleBeatsVote++;
+      } else if (Math.abs(mBeats - 2.0) < 0.35 || Math.abs(mBeats - 4.0) < 0.35) {
+        dupleBeatsVote++;
+      }
+    }
+  }
+
+  const isBassRegisterDominant =
+    totalNotesAnalyzed > 0 && bassRegisterNotes / totalNotesAnalyzed >= 0.65;
+
   const rawTime = ir.structure.recognized.time;
-  const timeSignature: TimeSignature =
-    rawTime && rawTime.num >= 1 && rawTime.num <= 16 && [2, 4, 8, 16].includes(rawTime.den)
-      ? { beats: rawTime.num, beatType: rawTime.den }
-      : { beats: 4, beatType: 4 };
+  let timeSignature: TimeSignature;
+  if (
+    isTripleMeterHint ||
+    (hasThreeQuarterNotesMeasure && rawTime?.num === 2) ||
+    (tripleBeatsVote >= 3 && tripleBeatsVote > dupleBeatsVote)
+  ) {
+    timeSignature = { beats: 3, beatType: 4 };
+  } else if (
+    rawTime &&
+    rawTime.num >= 1 &&
+    rawTime.num <= 16 &&
+    [2, 4, 8, 16].includes(rawTime.den)
+  ) {
+    timeSignature = { beats: rawTime.num, beatType: rawTime.den };
+  } else {
+    timeSignature = { beats: 4, beatType: 4 };
+  }
 
   const recognizedFifths = ir.structure.recognized.keyFifths;
   const clampedFifths =
@@ -199,11 +391,17 @@ export function convertOmrIrToScore(
 
   const staves: Staff[] = ir.parts.map((part, pIdx) => {
     let explicitClef: Clef | null = mapClef(undefined, ir.structure.recognized.clefs[pIdx]);
+    if (isBassHint || (ir.parts.length === 1 && isBassRegisterDominant)) {
+      explicitClef = 'bass';
+    }
     let carryRepeatStart = false;
 
-    const measures: Measure[] = part.measures.map((mIr, mIdx) => {
+    const rawMeasures: Measure[] = part.measures.map((mIr, mIdx) => {
       if (!explicitClef && mIr.attributes?.clef) {
-        explicitClef = mapClef(mIr.attributes.clef, null);
+        const c = mapClef(mIr.attributes.clef, null);
+        if (c === 'bass' || !isBassRegisterDominant) {
+          explicitClef = c;
+        }
       }
 
       const items: ScoreItem[] = mIr.events.map((ev, evIdx) => {
@@ -228,7 +426,7 @@ export function convertOmrIrToScore(
               ? [mapPitch(ev.pitch)]
               : [{ step: 'C' as const, octave: 4, accidental: null }];
 
-        const isTied = ev.tie === 'start' || ev.tie === 'continue' ? true : undefined;
+        const isTied = ev.tie === 'start' ? true : undefined;
         const lyric =
           pIdx === 0 && hints.lyrics && lyricCursor < hints.lyrics.length
             ? hints.lyrics[lyricCursor++]
@@ -310,6 +508,38 @@ export function convertOmrIrToScore(
       };
     });
 
+    // Reconciliación métrica y división de compases
+    const measures = reconcileMeasuresForTimeSignature(rawMeasures, timeSignature);
+
+    // Validación estricta de ligaduras de prolongación:
+    // Elimina todas las ligaduras espurias generadas por el modelo entre alturas distintas o sin pariente
+    const allNotes: Array<{ note: ScoreItem & { type: 'note' } }> = [];
+    for (const m of measures) {
+      for (const it of m.items) {
+        if (it.type === 'note' && it.pitch) {
+          allNotes.push({ note: it as ScoreItem & { type: 'note' } });
+        }
+      }
+    }
+
+    for (let i = 0; i < allNotes.length; i++) {
+      const current = allNotes[i].note;
+      if (!current.isTied) continue;
+
+      const next = allNotes[i + 1]?.note;
+      if (next && next.pitch && current.pitch) {
+        const sameStep = current.pitch.step === next.pitch.step;
+        const sameOctave = current.pitch.octave === next.pitch.octave;
+        const sameAcc = (current.pitch.accidental || null) === (next.pitch.accidental || null);
+
+        if (!sameStep || !sameOctave || !sameAcc) {
+          // Alturas distintas: es imposible que sea una ligadura de prolongación entre notas diferentes.
+          // Descartar el falso positivo del modelo neuronal.
+          current.isTied = undefined;
+        }
+      }
+    }
+
     // Filtrar compases finales vacíos residuales tras la última barra si no tienen notas reales
     while (
       measures.length > 1 &&
@@ -320,7 +550,10 @@ export function convertOmrIrToScore(
       measures.pop();
     }
 
-    const clef = explicitClef ?? inferClefFromItems(measures);
+    const clef =
+      explicitClef && (explicitClef === 'bass' || !isBassRegisterDominant)
+        ? explicitClef
+        : inferClefFromItems(measures);
     return {
       id: `staff-omr-${pIdx + 1}`,
       name: part.label || `Pentagrama ${pIdx + 1}`,

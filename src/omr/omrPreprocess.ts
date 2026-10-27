@@ -704,6 +704,17 @@ export function preprocessPage(
       }
     }
 
+    // Suprimir texto o números de compás periféricos fuera de la pauta en la esquina superior izquierda
+    // para evitar que números como "11", "39" o indicaciones de ensayo contaminen la clave musical
+    const clefMarginW = Math.round(Math.min(box.w * 0.15, box.lineSpacing * 10));
+    const textCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 2.4));
+    for (let y = 0; y < textCeiling; y++) {
+      const rowDst = y * box.w;
+      for (let x = 0; x < clefMarginW; x++) {
+        crop[rowDst + x] = 1.0;
+      }
+    }
+
     const norm = normalizeStaff(
       crop,
       box.w,
