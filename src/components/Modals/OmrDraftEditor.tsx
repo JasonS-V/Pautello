@@ -272,6 +272,39 @@ export function OmrDraftEditor({
                     className="block w-full rounded border p-1 text-slate-900"
                   />
                 </label>
+                <label>
+                  Alteración
+                  <select
+                    aria-label="Alteración del evento"
+                    value={item.pitch?.accidental ?? ''}
+                    onChange={(e) =>
+                      edit((target) => {
+                        const acc = (e.target.value || null) as '#' | 'b' | 'n' | null;
+                        target.pitch = { ...target.pitch!, accidental: acc };
+                        target.pitches = [target.pitch];
+                      })
+                    }
+                    className="block w-full rounded border p-1 text-slate-900"
+                  >
+                    <option value="">Ninguna</option>
+                    <option value="#">Sostenido (#)</option>
+                    <option value="b">Bemol (b)</option>
+                    <option value="n">Becuadro (n)</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    aria-label="Ligadura de salida"
+                    checked={Boolean(item.isTied)}
+                    onChange={(e) =>
+                      edit((target) => {
+                        target.isTied = e.target.checked || undefined;
+                      })
+                    }
+                  />
+                  Ligadura
+                </label>
               </>
             )}
             <label>
@@ -302,6 +335,19 @@ export function OmrDraftEditor({
                 }
               />
               Puntillo
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                aria-label="Calderón del evento"
+                checked={item.articulation === 'fermata'}
+                onChange={(e) =>
+                  edit((target) => {
+                    target.articulation = e.target.checked ? 'fermata' : undefined;
+                  })
+                }
+              />
+              Calderón
             </label>
             <label>
               Barra
@@ -390,8 +436,204 @@ export function OmrDraftEditor({
                 </select>
               </label>
             )}
+            <div className="col-span-full flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                className="rounded border px-2 py-1 text-xs"
+                onClick={() => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  const newItem: ScoreItem = {
+                    id: `omr-manual-${crypto.randomUUID()}`,
+                    type: 'note',
+                    duration: 'q',
+                    pitch: { step: 'C', octave: staff.clef === 'bass' ? 3 : 4, accidental: null },
+                  };
+                  targetMeasure.items.push(newItem);
+                  onEdit(next, measure.id);
+                  setItemId(newItem.id);
+                }}
+              >
+                Añadir evento al compás
+              </button>
+              {measure.items.length > 1 && (
+                <button
+                  type="button"
+                  className="rounded border px-2 py-1 text-xs"
+                  onClick={() => {
+                    const next = structuredClone(score);
+                    const targetMeasure = next.staves
+                      .find((s) => s.id === staff.id)!
+                      .measures.find((m) => m.id === measure.id)!;
+                    targetMeasure.items = targetMeasure.items.filter(
+                      (entry) => entry.id !== item.id
+                    );
+                    onEdit(next, measure.id);
+                    setItemId(targetMeasure.items[0]?.id ?? null);
+                  }}
+                >
+                  Eliminar evento seleccionado
+                </button>
+              )}
+            </div>
           </fieldset>
         )}
+        <details className="rounded border p-2 text-xs">
+          <summary className="cursor-pointer font-semibold">
+            Propiedades e indicaciones del compás
+          </summary>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <label>
+              Número impreso
+              <input
+                aria-label="Número impreso del compás"
+                type="number"
+                min="1"
+                value={measure.printedNumber ?? ''}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.printedNumber = e.target.value ? Number(e.target.value) : undefined;
+                  onEdit(next, measure.id);
+                }}
+                className="block w-full rounded border p-1 text-slate-900"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                aria-label="Anacrusa del compás"
+                checked={Boolean(measure.isAnacrusis)}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.isAnacrusis = e.target.checked || undefined;
+                  onEdit(next, measure.id);
+                }}
+              />
+              Anacrusa
+            </label>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                aria-label="Salto de sistema"
+                checked={Boolean(measure.systemBreak)}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.systemBreak = e.target.checked || undefined;
+                  onEdit(next, measure.id);
+                }}
+              />
+              Salto de sistema
+            </label>
+            <label>
+              Métrica local
+              <select
+                aria-label="Métrica local del compás"
+                value={
+                  measure.timeSignatureChange
+                    ? `${measure.timeSignatureChange.beats}/${measure.timeSignatureChange.beatType}${
+                        measure.meterGlyph ? `-${measure.meterGlyph}` : ''
+                      }`
+                    : ''
+                }
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  const val = e.target.value;
+                  if (!val) {
+                    delete targetMeasure.timeSignatureChange;
+                    delete targetMeasure.meterGlyph;
+                  } else {
+                    const [meterPart, glyphPart] = val.split('-');
+                    const [beats, beatType] = meterPart.split('/').map(Number);
+                    targetMeasure.timeSignatureChange = { beats, beatType };
+                    targetMeasure.meterGlyph = glyphPart === 'common' ? 'common' : undefined;
+                  }
+                  onEdit(next, measure.id);
+                }}
+                className="block w-full rounded border p-1 text-slate-900"
+              >
+                <option value="">Sin cambio</option>
+                <option value="3/4">3/4</option>
+                <option value="4/4">4/4</option>
+                <option value="4/4-common">4/4 (Compasillo C)</option>
+                <option value="2/4">2/4</option>
+                <option value="6/8">6/8</option>
+              </select>
+            </label>
+            <label>
+              Marca de ensayo
+              <input
+                aria-label="Marca de ensayo del compás"
+                type="text"
+                maxLength={12}
+                value={measure.rehearsalMark ?? ''}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.rehearsalMark = e.target.value || undefined;
+                  onEdit(next, measure.id);
+                }}
+                className="block w-full rounded border p-1 text-slate-900"
+              />
+            </label>
+            <label>
+              Texto de estilo o tempo
+              <input
+                aria-label="Texto de estilo o tempo"
+                type="text"
+                maxLength={60}
+                value={measure.tempoText ?? ''}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.tempoText = e.target.value || undefined;
+                  onEdit(next, measure.id);
+                }}
+                className="block w-full rounded border p-1 text-slate-900"
+              />
+            </label>
+            <label>
+              Marca de navegación
+              <select
+                aria-label="Marca de navegación del compás"
+                value={measure.navigationMark ?? ''}
+                onChange={(e) => {
+                  const next = structuredClone(score);
+                  const targetMeasure = next.staves
+                    .find((s) => s.id === staff.id)!
+                    .measures.find((m) => m.id === measure.id)!;
+                  targetMeasure.navigationMark = (e.target.value || undefined) as
+                    'segno' | 'toCoda' | 'dalSegnoAlCoda' | 'coda' | undefined;
+                  onEdit(next, measure.id);
+                }}
+                className="block w-full rounded border p-1 text-slate-900"
+              >
+                <option value="">Ninguna</option>
+                <option value="segno">Segno</option>
+                <option value="toCoda">To Coda</option>
+                <option value="dalSegnoAlCoda">D.S. al Coda</option>
+                <option value="coda">Coda</option>
+              </select>
+            </label>
+          </div>
+        </details>
         <button
           type="button"
           disabled={regionBusy}

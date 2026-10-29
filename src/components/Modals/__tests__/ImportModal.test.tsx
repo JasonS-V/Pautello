@@ -519,4 +519,59 @@ describe('ImportModal: avisos OMR', () => {
     expect(imported.staves[0].measures[0].items[0].isDotted).toBeUndefined();
     expect(imported.keySignature).toBe('G');
   });
+
+  it('registra intervenciones y duración de revisión humana al corregir alteración, ligadura, calderón y verificar todo (F9.1/F9.3)', async () => {
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score: structuredClone(score),
+      recognizedScore: structuredClone(score),
+      reviewStatus: 'automatic',
+      confidence: 84,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'neural-onnx',
+      ir: null,
+      sourceLinks: [],
+      warnings: [
+        {
+          code: 'low-confidence',
+          severity: 'warning',
+          provenance: 'observed',
+          message: 'Revisar altura en compás 1',
+        },
+      ],
+    });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['x'], 'el-rey.png', { type: 'image/png' })] },
+    });
+
+    const accidental = await screen.findByLabelText('Alteración del evento');
+    fireEvent.change(accidental, { target: { value: '#' } });
+    fireEvent.click(screen.getByLabelText('Ligadura de salida'));
+    fireEvent.click(screen.getByLabelText('Calderón del evento'));
+    fireEvent.change(screen.getByLabelText(/^Copyright/), {
+      target: { value: '© Jeff Nevin, 2001' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar todo como verificado' }));
+    expect(screen.getByLabelText('Intervenciones de revisión')).toHaveTextContent(
+      '5 intervención(es)'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cargar en el Editor' }));
+    await waitFor(() => expect(onImportScore).toHaveBeenCalled());
+    const [confirmedScore, session] = onImportScore.mock.calls[0];
+    expect(confirmedScore.copyright).toBe('© Jeff Nevin, 2001');
+    expect(confirmedScore.staves[0].measures[0].items[0]).toMatchObject({
+      pitch: { step: 'C', octave: 3, accidental: '#' },
+      isTied: true,
+      articulation: 'fermata',
+    });
+    expect(session.reviewStatus).toBe('reviewed');
+    expect(session.interventionCount).toBe(5);
+    expect(session.reviewDurationSeconds).toBeGreaterThanOrEqual(1);
+    expect(session.recognizedScore.staves[0].measures[0].items[0].pitch?.accidental).toBeNull();
+  });
 });

@@ -469,16 +469,56 @@ export function evaluateAgainstReference(params: {
   const refTempoDirections = params.reference.directions.filter(
     (d) => d.kind === 'tempo' || d.kind === 'equivalence'
   );
-  // Actualmente Score solo guarda un número BPM sin figura metronómica ni equivalencia
-  const tempoFigureMatched = 0;
+  const unitToDuration = (unit?: readonly number[]): string | null => {
+    if (!unit || unit.length < 2) return null;
+    if (unit[0] === 1 && unit[1] === 1) return 'w';
+    if (unit[0] === 1 && unit[1] === 2) return 'h';
+    if (unit[0] === 1 && unit[1] === 4) return 'q';
+    if (unit[0] === 1 && unit[1] === 8) return '8';
+    if (unit[0] === 1 && unit[1] === 16) return '16';
+    return null;
+  };
+  const predictedTempoFiguresCount = predMeasures.reduce(
+    (count, m) => count + (m.metronomeMark ? 1 : 0) + (m.metricEquivalence ? 1 : 0),
+    0
+  );
+  let tempoFigureMatched = 0;
   let numericTempoCoincidences = 0;
   for (const d of refTempoDirections as Array<{
     kind: string;
     measure: number;
+    beatUnit?: number[];
+    dots?: number;
+    perMinute?: number;
     quarterBpm?: number;
+    previousUnit?: number[];
+    nextUnit?: number[];
+    derivedQuarterBpm?: number;
   }>) {
     if (d.measure === 1 && d.quarterBpm === params.score.tempo) {
       numericTempoCoincidences += 1;
+    }
+    const predMeasure = predMeasures[d.measure - 1];
+    if (!predMeasure) continue;
+    if (d.kind === 'tempo' && predMeasure.metronomeMark) {
+      const expectedBeatUnit = unitToDuration(d.beatUnit);
+      const unitMatches =
+        !expectedBeatUnit || predMeasure.metronomeMark.beatUnit === expectedBeatUnit;
+      const dotsMatch = (predMeasure.metronomeMark.dots ?? 0) === (d.dots ?? 0);
+      const bpmMatches =
+        d.perMinute === undefined || predMeasure.metronomeMark.perMinute === d.perMinute;
+      if (unitMatches && dotsMatch && bpmMatches) {
+        tempoFigureMatched += 1;
+      }
+    } else if (d.kind === 'equivalence' && predMeasure.metricEquivalence) {
+      const expectedPrev = unitToDuration(d.previousUnit);
+      const expectedNext = unitToDuration(d.nextUnit);
+      const prevMatches =
+        !expectedPrev || predMeasure.metricEquivalence.previousUnit === expectedPrev;
+      const nextMatches = !expectedNext || predMeasure.metricEquivalence.nextUnit === expectedNext;
+      if (prevMatches && nextMatches) {
+        tempoFigureMatched += 1;
+      }
     }
   }
 
@@ -519,10 +559,58 @@ export function evaluateAgainstReference(params: {
   const refNav = params.reference.directions.filter((d) =>
     ['segno', 'to-coda', 'ds-al-coda', 'coda'].includes(d.kind)
   );
-  const predNav = predMeasures.flatMap((m, idx) =>
-    m.navigationMark ? [`${m.navigationMark}@${idx + 1}`] : []
-  );
-  const matchedNav = 0; // Navegación visual sólo cuenta si coincide tipo y compás
+  const normalizeNavKind = (mark?: string | null): string | null => {
+    if (!mark) return null;
+    if (mark === 'toCoda') return 'to-coda';
+    if (mark === 'dalSegnoAlCoda') return 'ds-al-coda';
+    return mark;
+  };
+  const predNav = predMeasures.flatMap((m, idx) => {
+    const k = normalizeNavKind(m.navigationMark);
+    return k ? [`${k}@${idx + 1}`] : [];
+  });
+  const matchedNav = refNav.filter((d) =>
+    predNav.includes(`${d.kind}@${(d as { measure: number }).measure}`)
+  ).length;
+
+  let matchedOtherDirections = 0;
+  for (const d of params.reference.directions as Array<{
+    kind: string;
+    measure: number;
+    text?: string;
+    value?: number[];
+    glyph?: string;
+  }>) {
+    if (
+      ['tempo', 'equivalence', 'segno', 'to-coda', 'ds-al-coda', 'coda'].includes(d.kind)
+    ) {
+      continue;
+    }
+    const predMeasure = predMeasures[d.measure - 1];
+    if (!predMeasure) continue;
+    if (d.kind === 'style' && predMeasure.tempoText) {
+      if (!d.text || predMeasure.tempoText.trim() === d.text.trim()) {
+        matchedOtherDirections += 1;
+      }
+    } else if (d.kind === 'rehearsal' && predMeasure.rehearsalMark) {
+      if (!d.text || predMeasure.rehearsalMark.trim() === d.text.trim()) {
+        matchedOtherDirections += 1;
+      }
+    } else if (d.kind === 'fermata') {
+      if (predMeasure.items.some((item) => item.articulation === 'fermata')) {
+        matchedOtherDirections += 1;
+      }
+    } else if (d.kind === 'meter' && predMeasure.timeSignatureChange) {
+      const valueMatches =
+        !d.value ||
+        (predMeasure.timeSignatureChange.beats === d.value[0] &&
+          predMeasure.timeSignatureChange.beatType === d.value[1]);
+      const glyphMatches = !d.glyph || (d.glyph === 'C' && predMeasure.meterGlyph === 'common');
+      if (valueMatches && glyphMatches) {
+        matchedOtherDirections += 1;
+      }
+    }
+  }
 
   const missingMeasures = Math.max(0, refMeasures.length - predMeasures.length);
   const extraMeasures = Math.max(0, predMeasures.length - refMeasures.length);
@@ -538,7 +626,8 @@ export function evaluateAgainstReference(params: {
   const estimatedEventEdits =
     exactEvents.substitutions + exactEvents.deletions + exactEvents.insertions;
   const estimatedMeasureEdits = Math.abs(refMeasures.length - predMeasures.length);
-  const missingDirections = params.reference.directions.length - matchedNav - tempoFigureMatched;
+  const missingDirections =
+    params.reference.directions.length - matchedNav - tempoFigureMatched - matchedOtherDirections;
   const missingMeters = Math.max(0, refMeters.length - matchedMeters);
   const estimatedAttributeAndDirectionEdits =
     1 - clefMatched + missingMeters + Math.max(0, missingDirections);
@@ -663,7 +752,7 @@ export function evaluateAgainstReference(params: {
         sourceOfTruth,
         matched: tempoFigureMatched,
         referenceTotal: refTempoDirections.length,
-        predictedTotal: 0,
+        predictedTotal: predictedTempoFiguresCount,
         rate:
           refTempoDirections.length > 0
             ? round4(tempoFigureMatched / refTempoDirections.length)

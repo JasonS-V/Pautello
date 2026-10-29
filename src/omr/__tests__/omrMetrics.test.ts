@@ -331,4 +331,63 @@ describe('evaluador de métricas musicales y puertas OMR (F0.4)', () => {
     expect(cleanBucket?.worstExactEventMatchRate).toBe(0);
     expect(cleanBucket?.worstSampleId).toBe('bass-fail');
   });
+
+  it('reconoce indicaciones confirmadas del esquema v2 (metronomeMark, equivalencia, navegación, calderón, ensayo y estilo) con 0 ediciones pendientes', () => {
+    const ref = baseReference();
+    ref.directions = [
+      {
+        id: 'tempo-1',
+        kind: 'tempo',
+        measure: 1,
+        beatUnit: [1, 2],
+        dots: 0,
+        perMinute: 60,
+        quarterBpm: 120,
+      } as MusicalReference['directions'][number],
+      { id: 'segno-1', kind: 'segno', measure: 1 },
+      {
+        id: 'style-1',
+        kind: 'style',
+        measure: 1,
+        text: 'Ranchera Valseada',
+      } as MusicalReference['directions'][number],
+      {
+        id: 'rehearsal-2',
+        kind: 'rehearsal',
+        measure: 2,
+        text: 'A',
+      } as MusicalReference['directions'][number],
+      {
+        id: 'fermata-2',
+        kind: 'fermata',
+        measure: 2,
+      } as MusicalReference['directions'][number],
+    ];
+    const score = perfectScore();
+    score.staves[0].measures[0].metronomeMark = {
+      beatUnit: 'h',
+      dots: 0,
+      perMinute: 60,
+    };
+    score.staves[0].measures[0].navigationMark = 'segno';
+    score.staves[0].measures[0].tempoText = 'Ranchera Valseada';
+    score.staves[0].measures[1].rehearsalMark = 'A';
+    score.staves[0].measures[1].items[1].articulation = 'fermata';
+
+    const report = evaluateAgainstReference({
+      sampleId: 'confirmed-v2',
+      reference: ref,
+      score,
+      observedReviewSeconds: 42,
+    });
+
+    expect(report.events.exact.matchRate).toBe(1);
+    expect(report.components.barlineAndMeasure.rate).toBe(1);
+    expect(report.components.tempoFigure.matched).toBe(1);
+    expect(report.components.tempoFigure.rate).toBe(1);
+    expect(report.structure.navigationJumps.matched).toBe(1);
+    expect(report.structure.navigationJumps.rate).toBe(1);
+    expect(report.humanEffort.totalEstimatedEdits).toBe(0);
+    expect(report.humanEffort.observedReviewSeconds).toBe(42);
+  });
 });

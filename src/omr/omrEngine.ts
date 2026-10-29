@@ -128,6 +128,8 @@ export interface OmrResult {
   manualEditMeasureIds?: string[];
   acceptedIndicationIds?: string[];
   rejectedIndicationIds?: string[];
+  interventionCount?: number;
+  reviewDurationSeconds?: number;
   stageTrace?: OmrProgress[];
   pageDiagnostics?: OmrPageDiagnostic[];
   modelContract?: OmrActiveModelContract | null;
@@ -1136,6 +1138,8 @@ async function recognizeScoreFromFileOnce(
 
     return recordBrowserOmrRun({
       score: summary.score,
+      recognizedScore: structuredClone(summary.score),
+      reviewStatus: 'automatic',
       confidence: summary.averageConfidence,
       pagesProcessed: pages.length,
       stavesDetected: totalStaves,

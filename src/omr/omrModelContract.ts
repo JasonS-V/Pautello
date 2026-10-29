@@ -144,3 +144,173 @@ export function verifyModelOutputCompatibility(params: {
     }
   }
 }
+
+export interface OmrCachedAssetCheck {
+  sha256: string;
+  bytes: number;
+}
+
+export function verifyModelReleaseCoherence(
+  manifest: OmrModelManifest,
+  cachedAssets: Record<string, OmrCachedAssetCheck>
+): { valid: boolean; reason?: string } {
+  const required: Array<{ label: string; path: string; sha256: string; bytes: number }> = [
+    {
+      label: 'vocabulary',
+      path: manifest.vocabulary.path,
+      sha256: manifest.vocabulary.sha256,
+      bytes: manifest.vocabulary.bytes,
+    },
+    {
+      label: 'fp32',
+      path: manifest.variants.fp32.path,
+      sha256: manifest.variants.fp32.sha256,
+      bytes: manifest.variants.fp32.bytes,
+    },
+    {
+      label: 'int8',
+      path: manifest.variants.int8.path,
+      sha256: manifest.variants.int8.sha256,
+      bytes: manifest.variants.int8.bytes,
+    },
+  ];
+
+  for (const item of required) {
+    const asset = cachedAssets[item.path];
+    if (!asset) {
+      return {
+        valid: false,
+        reason: `Falta el recurso '${item.path}' (${item.label}) en el conjunto versionado.`,
+      };
+    }
+    if (asset.sha256 !== item.sha256 || asset.bytes !== item.bytes) {
+      return {
+        valid: false,
+        reason: `Mezcla de versiones detectada en '${item.path}': hash/tamaño (${asset.sha256.slice(0, 12)}/${asset.bytes}) no coincide con el manifiesto (${item.sha256.slice(0, 12)}/${item.bytes}).`,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+export function verifyModelRollbackTransition(params: {
+  activeTrialManifest: OmrModelManifest;
+  rollbackTargetManifest: OmrModelManifest;
+  rollbackVocabTokens: readonly string[];
+  rollbackAssets: Record<string, OmrCachedAssetCheck>;
+}): {
+  canRollback: boolean;
+  restoredContractVersion: string;
+  preservesScoreSchema: boolean;
+  reason?: string;
+} {
+  try {
+    verifyVocabularyAgainstManifest(params.rollbackVocabTokens, params.rollbackTargetManifest);
+  } catch (error) {
+    return {
+      canRollback: false,
+      restoredContractVersion: params.rollbackTargetManifest.contractVersion,
+      preservesScoreSchema: true,
+      reason: error instanceof Error ? error.message : 'Vocabulario de rollback inválido.',
+    };
+  }
+
+  const coherence = verifyModelReleaseCoherence(
+    params.rollbackTargetManifest,
+    params.rollbackAssets
+  );
+  if (!coherence.valid) {
+    return {
+      canRollback: false,
+      restoredContractVersion: params.rollbackTargetManifest.contractVersion,
+      preservesScoreSchema: true,
+      reason: coherence.reason,
+    };
+  }
+
+  return {
+    canRollback: true,
+    restoredContractVersion: params.rollbackTargetManifest.contractVersion,
+    preservesScoreSchema: true,
+  };
+}
+
+export interface OmrTrialEvaluationRecord {
+  releaseId: string;
+  evaluatedAt: string;
+  contractVersion: string;
+  modelFamily: string;
+  provenance: OmrModelManifest['provenance'];
+  partitions: {
+    train: readonly string[];
+    validation: readonly string[];
+    test: readonly string[];
+  };
+  authorizedLocalSamples: readonly string[];
+  metricsSummary: {
+    meanExactEventMatchRate: number;
+    worstExactEventMatchRate: number;
+    regressionGatePassed: boolean;
+  };
+}
+
+export function buildTrialModelEvaluationRecord(params: {
+  releaseId: string;
+  evaluatedAt?: string;
+  manifest: OmrModelManifest;
+  partitions: {
+    train: readonly string[];
+    validation: readonly string[];
+    test: readonly string[];
+  };
+  authorizedLocalSamples: readonly string[];
+  metricsSummary: {
+    meanExactEventMatchRate: number;
+    worstExactEventMatchRate: number;
+    regressionGatePassed: boolean;
+  };
+}): OmrTrialEvaluationRecord {
+  if (!params.releaseId.trim()) {
+    throw new Error('Se requiere un identificador de versión de prueba (releaseId).');
+  }
+  if (
+    params.partitions.train.length === 0 ||
+    params.partitions.validation.length === 0 ||
+    params.partitions.test.length === 0
+  ) {
+    throw new Error(
+      'El registro de evaluación requiere particiones no vacías de entrenamiento, validación y prueba.'
+    );
+  }
+  const trainSet = new Set(params.partitions.train);
+  const valSet = new Set(params.partitions.validation);
+  for (const id of params.partitions.validation) {
+    if (trainSet.has(id)) {
+      throw new Error(`Fuga de partición detectada: '${id}' está en train y validation.`);
+    }
+  }
+  for (const id of params.partitions.test) {
+    if (trainSet.has(id) || valSet.has(id)) {
+      throw new Error(`Fuga de partición detectada: '${id}' aparece en test y otra partición.`);
+    }
+  }
+  if (!params.manifest.provenance.weightsLicense || !params.manifest.provenance.producer) {
+    throw new Error('El manifiesto de prueba debe declarar procedencia y licencia de pesos.');
+  }
+
+  return {
+    releaseId: params.releaseId.trim(),
+    evaluatedAt: params.evaluatedAt ?? new Date().toISOString(),
+    contractVersion: params.manifest.contractVersion,
+    modelFamily: params.manifest.modelFamily,
+    provenance: params.manifest.provenance,
+    partitions: {
+      train: [...params.partitions.train],
+      validation: [...params.partitions.validation],
+      test: [...params.partitions.test],
+    },
+    authorizedLocalSamples: [...params.authorizedLocalSamples],
+    metricsSummary: { ...params.metricsSummary },
+  };
+}

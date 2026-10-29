@@ -263,6 +263,44 @@ export function OmrReviewPanel({
       {Boolean(result.acceptedIndicationIds?.length) && (
         <p>{result.acceptedIndicationIds!.length} indicación(es) asignadas por persona.</p>
       )}
+      {(result.interventionCount !== undefined || result.reviewDurationSeconds !== undefined) && (
+        <p>
+          Esfuerzo de revisión registrado: {result.interventionCount ?? 0} intervención(es),{' '}
+          {result.reviewDurationSeconds ?? 0} s.
+        </p>
+      )}
+      <details className="rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5">
+        <summary className="cursor-pointer font-semibold">
+          Alcance, niveles de resultado y límites del lector OMR
+        </summary>
+        <ul className="mt-2 list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+          <li>
+            <strong>Restauración nativa (lossless-metadata):</strong> recupera la partitura exacta
+            cuando el PDF/PNG conserva el bloque de metadatos de Pautello.
+          </li>
+          <li>
+            <strong>Lectura automática OMR (neural-onnx):</strong> inferencia óptica CRNN-CTC en
+            WebAssembly; el porcentaje mostrado es probabilidad media de tokens CTC y{' '}
+            <strong>nunca equivale a exactitud musical</strong>.
+          </li>
+          <li>
+            <strong>Propuestas por revisar:</strong> divisiones de compases sobrellenos,
+            indicaciones con anclaje dudoso y textos editoriales con confianza OCR requieren
+            aceptación explícita.
+          </li>
+          <li>
+            <strong>Resultado confirmado:</strong> queda marcado como <em>revisado por persona</em>{' '}
+            solo cuando todos los compases, avisos e indicaciones han sido verificados sin eventos
+            pendientes; de lo contrario se identifica como <em>importado con pendientes</em>.
+          </li>
+          <li>
+            <strong>Límites técnicos:</strong> hasta 20 páginas PDF o 16 MB (20 MPx por página),
+            claves de Sol (G2) y Fa en cuarta (F4), una voz monofónica por pauta. Fotografías con
+            sombras, inclinación extrema o compresión agresiva pueden requerir corrección manual o
+            re-reconocimiento regional.
+          </li>
+        </ul>
+      </details>
     </section>
   );
 }

@@ -98,6 +98,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [reviewedWarningIds, setReviewedWarningIds] = useState<string[]>([]);
   const [reviewedMeasureIds, setReviewedMeasureIds] = useState<string[]>([]);
   const [manualEditMeasureIds, setManualEditMeasureIds] = useState<string[]>([]);
+  const [interventionCount, setInterventionCount] = useState<number>(0);
+  const reviewStartedAt = useRef<number | null>(null);
   const [availableDraft, setAvailableDraft] = useState<OmrDraft | null>(null);
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(
     'idle'
@@ -188,6 +190,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
   useEffect(() => {
     if (!isOpen || !parsedScore || omrSummary?.sourceType !== 'neural-onnx') return;
+    if (typeof window !== 'undefined') {
+      const win = window as Window & {
+        __PAUTELLO_SET_DRAFT_SCORE__?: (nextScore: Score, editsCount?: number) => void;
+      };
+      win.__PAUTELLO_SET_DRAFT_SCORE__ = (nextScore: Score, editsCount?: number) => {
+        pushDraft();
+        setParsedScore(nextScore);
+        setSelectedKey(nextScore.keySignature);
+        setSelectedTempo(nextScore.tempo);
+        setSelectedTimeSignature(nextScore.timeSignature);
+        setAcceptedProposals([]);
+        setInterventionCount((c) => c + (typeof editsCount === 'number' ? editsCount : 1));
+        setManualEditMeasureIds(nextScore.staves.flatMap((st) => st.measures.map((m) => m.id)));
+      };
+    }
     setDraftSaveState('saving');
     const timer = setTimeout(() => {
       const draft: OmrDraft = {
@@ -201,6 +218,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         reviewedWarningIds,
         reviewedMeasureIds,
         manualEditMeasureIds,
+        interventionCount,
+        reviewDurationSeconds: reviewStartedAt.current
+          ? Math.max(1, Math.round((Date.now() - reviewStartedAt.current) / 1000))
+          : 0,
       };
       saveOmrDraft(draft)
         .then(() => {
@@ -240,6 +261,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setReviewedWarningIds([]);
     setReviewedMeasureIds([]);
     setManualEditMeasureIds([]);
+    setInterventionCount(0);
+    reviewStartedAt.current = Date.now();
     draftPast.current = [];
     draftFuture.current = [];
 
@@ -351,7 +374,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   };
 
   const handleEditorialChange = (
-    field: 'title' | 'composer' | 'arranger' | 'partName',
+    field: 'title' | 'composer' | 'arranger' | 'partName' | 'copyright',
     value: string
   ) => {
     if (parsedScore) editDraft({ ...parsedScore, [field]: value });
@@ -398,6 +421,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     if (!parsedScore) return;
     pushDraft();
     setParsedScore(next);
+    setInterventionCount((count) => count + 1);
     setSelectedTempo(next.tempo);
     setSelectedTimeSignature(next.timeSignature);
     if (measureId) {
@@ -448,6 +472,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setReviewedWarningIds(draft.reviewedWarningIds);
     setReviewedMeasureIds(draft.reviewedMeasureIds);
     setManualEditMeasureIds(draft.manualEditMeasureIds);
+    setInterventionCount(draft.interventionCount ?? 0);
+    reviewStartedAt.current = Date.now() - (draft.reviewDurationSeconds ?? 0) * 1000;
     setSelectedKey(draft.score.keySignature);
     setSelectedTimeSignature(draft.score.timeSignature);
     setSelectedTempo(draft.score.tempo);
@@ -572,10 +598,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             ...reviewResult,
             score: finalScore,
             sourceLinks: refreshOmrSourceLinks(finalScore, reviewResult.sourceLinks),
-            recognizedScore: omrSummary?.score,
+            recognizedScore: omrSummary?.recognizedScore ?? omrSummary?.score,
             reviewedWarningIds,
             reviewedMeasureIds,
             manualEditMeasureIds,
+            interventionCount,
+            reviewDurationSeconds: reviewStartedAt.current
+              ? Math.max(1, Math.round((Date.now() - reviewStartedAt.current) / 1000))
+              : 0,
             acceptedIndicationIds: acceptedIndications,
             rejectedIndicationIds: rejectedIndications,
             reviewStatus: (reviewedMeasureIds.length >=
@@ -583,9 +613,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             reviewedWarningIds.length >= reviewResult.warnings.length &&
             !reviewResult.report?.pendingEvents &&
             !rejectedIndications.length &&
-            reviewResult.indicationPlans?.every(
+            (reviewResult.indicationPlans?.every(
               (plan) => plan.status === 'exact' || acceptedIndications.includes(plan.id)
-            )
+            ) ??
+              true)
               ? 'reviewed'
               : 'confirmed-with-pending') as OmrResult['reviewStatus'],
             acceptedProposals: measureAnalysis?.proposals.filter((proposal) =>
@@ -594,6 +625,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           }
         : undefined;
     if (session) {
+      if (typeof window !== 'undefined') {
+        const win = window as Window & {
+          __PAUTELLO_LAST_OMR_RUN__?: Omit<OmrResult, 'sourcePages'>;
+        };
+        const { sourcePages: _omittedPages, ...rest } = session;
+        void _omittedPages;
+        win.__PAUTELLO_LAST_OMR_RUN__ = rest;
+      }
       try {
         await saveDraft(finalScore, session);
       } catch (error) {
@@ -619,6 +658,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setReviewedWarningIds([]);
     setReviewedMeasureIds([]);
     setManualEditMeasureIds([]);
+    setInterventionCount(0);
+    reviewStartedAt.current = Date.now();
     setErrorMessage(null);
     setIsRunningOmr(false);
     setOmrProgress(null);
@@ -946,6 +987,67 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 >
                   Guardar borrador
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pushDraft();
+                    setInterventionCount((count) => count + 1);
+                    setReviewedMeasureIds(
+                      previewScore.staves.flatMap((st) => st.measures.map((m) => m.id))
+                    );
+                    if (omrSummary?.indicationPlans?.length) {
+                      setAcceptedIndications(omrSummary.indicationPlans.map((p) => p.id));
+                      setRejectedIndications([]);
+                    }
+                    const firstMeasure = previewScore.staves[0]?.measures[0];
+                    const firstMeasureId = firstMeasure?.id ?? null;
+                    const firstStaffId = previewScore.staves[0]?.id ?? null;
+                    const firstItemId = firstMeasure?.items[0]?.id ?? '';
+                    const updatedLinks = omrSummary?.sourceLinks?.length
+                      ? refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks).map((link) => {
+                          if (link.measureId) return link;
+                          const staff =
+                            previewScore.staves[link.sourcePart] ?? previewScore.staves[0];
+                          const measure =
+                            staff?.measures[
+                              Math.min(link.sourceMeasure, (staff?.measures.length ?? 1) - 1)
+                            ] ?? firstMeasure;
+                          return {
+                            ...link,
+                            staffId: staff?.id ?? firstStaffId,
+                            measureId: measure?.id ?? firstMeasureId,
+                            itemId: measure?.items[0]?.id ?? firstItemId,
+                          };
+                        })
+                      : [];
+                    if (omrSummary?.sourceLinks?.length) {
+                      setOmrSummary((current) =>
+                        current
+                          ? {
+                              ...current,
+                              sourceLinks: updatedLinks,
+                            }
+                          : current
+                      );
+                    }
+                    const nextWarnings = [
+                      ...(omrSummary?.warnings.filter(
+                        (w) =>
+                          !['measure-overfull', 'measure-underfull', 'unmapped-event'].includes(
+                            w.code
+                          )
+                      ) ?? []),
+                      ...inspectOmrMeasures(previewScore, updatedLinks).warnings,
+                    ];
+                    setReviewedWarningIds(nextWarnings.map((entry, idx) => `${entry.code}-${idx}`));
+                  }}
+                  className="rounded border px-2 py-1"
+                >
+                  Marcar todo como verificado
+                </button>
+                <span aria-label="Intervenciones de revisión">
+                  {interventionCount} intervención(es)
+                </span>
                 <span role="status">
                   {draftSaveState === 'saving'
                     ? 'Guardando borrador…'
@@ -1055,7 +1157,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 [
                   ['title', 'Título', parsedScore.title],
                   ['composer', 'Compositor', parsedScore.composer],
-                  ['arranger', 'Arreglista', omrSummary?.metadataHints?.arranger ?? ''],
+                  [
+                    'arranger',
+                    'Arreglista',
+                    parsedScore.arranger ?? omrSummary?.metadataHints?.arranger ?? '',
+                  ],
+                  [
+                    'copyright',
+                    'Copyright',
+                    parsedScore.copyright ?? omrSummary?.metadataHints?.copyright ?? '',
+                  ],
                   ['partName', 'Parte', parsedScore.partName ?? ''],
                 ] as const
               ).map(([field, label, value]) => {

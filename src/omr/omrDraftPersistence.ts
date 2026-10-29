@@ -13,6 +13,8 @@ export interface OmrDraft {
   reviewedWarningIds: string[];
   reviewedMeasureIds: string[];
   manualEditMeasureIds: string[];
+  interventionCount?: number;
+  reviewDurationSeconds?: number;
 }
 
 const DB_NAME = 'pautello_omr_drafts';
@@ -54,6 +56,50 @@ export function saveOmrDraft(draft: OmrDraft): Promise<void> {
   return writeQueue;
 }
 
+export function migrateOmrDraftRecord(value: unknown): OmrDraft | null {
+  if (!value || typeof value !== 'object') return null;
+  const draft = value as Partial<OmrDraft> & { version?: number };
+  if (
+    (draft.version !== 1 && draft.version !== undefined) ||
+    !draft.result ||
+    !Array.isArray(draft.result.warnings)
+  ) {
+    return null;
+  }
+  const score = normalizeScore(draft.score);
+  if (!score) return null;
+  const normalizedResultScore = normalizeScore(draft.result.score) ?? score;
+  const normalizedRecognizedScore =
+    normalizeScore(draft.result.recognizedScore ?? draft.result.score) ?? normalizedResultScore;
+
+  return {
+    version: 1,
+    savedAt: typeof draft.savedAt === 'number' ? draft.savedAt : Date.now(),
+    score,
+    result: {
+      ...draft.result,
+      score: normalizedResultScore,
+      recognizedScore: normalizedRecognizedScore,
+      reviewStatus: draft.result.reviewStatus ?? 'automatic',
+    },
+    acceptedMeasureIds: Array.isArray(draft.acceptedMeasureIds) ? draft.acceptedMeasureIds : [],
+    acceptedIndicationIds: Array.isArray(draft.acceptedIndicationIds)
+      ? draft.acceptedIndicationIds
+      : [],
+    rejectedIndicationIds: Array.isArray(draft.rejectedIndicationIds)
+      ? draft.rejectedIndicationIds
+      : [],
+    reviewedWarningIds: Array.isArray(draft.reviewedWarningIds) ? draft.reviewedWarningIds : [],
+    reviewedMeasureIds: Array.isArray(draft.reviewedMeasureIds) ? draft.reviewedMeasureIds : [],
+    manualEditMeasureIds: Array.isArray(draft.manualEditMeasureIds)
+      ? draft.manualEditMeasureIds
+      : [],
+    interventionCount: typeof draft.interventionCount === 'number' ? draft.interventionCount : 0,
+    reviewDurationSeconds:
+      typeof draft.reviewDurationSeconds === 'number' ? draft.reviewDurationSeconds : 0,
+  };
+}
+
 export async function loadOmrDraft(): Promise<OmrDraft | null> {
   const db = await openDraftDb();
   try {
@@ -63,21 +109,7 @@ export async function loadOmrDraft(): Promise<OmrDraft | null> {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    if (!value || typeof value !== 'object') return null;
-    const draft = value as OmrDraft;
-    if (draft.version !== 1 || !draft.result || !Array.isArray(draft.result.warnings)) return null;
-    const score = normalizeScore(draft.score);
-    if (!score) return null;
-    return {
-      ...draft,
-      score,
-      acceptedMeasureIds: draft.acceptedMeasureIds ?? [],
-      acceptedIndicationIds: draft.acceptedIndicationIds ?? [],
-      rejectedIndicationIds: draft.rejectedIndicationIds ?? [],
-      reviewedWarningIds: draft.reviewedWarningIds ?? [],
-      reviewedMeasureIds: draft.reviewedMeasureIds ?? [],
-      manualEditMeasureIds: draft.manualEditMeasureIds ?? [],
-    };
+    return migrateOmrDraftRecord(value);
   } finally {
     db.close();
   }

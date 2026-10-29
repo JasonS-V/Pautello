@@ -79,6 +79,12 @@ Construida bajo una estricta filosofía de **artesanía visual**, cada elemento 
 - **Imágenes SVG y PNG:** Para inserción de compases y fragmentos en apuntes y documentos didácticos.
 - **Copia de Seguridad JSON:** Guarda y restaura respaldos locales completos de partituras en formato JSON estructurado.
 
+### 6. Reconocimiento Óptico Musical (OMR) y Revisión Asistida
+
+- **Ejecución 100% Local en Web Worker:** Lectura óptica de PDFs e imágenes (`.pdf`, `.png`, `.jpg`, `.webp`, `.svg`) mediante un modelo CRNN-CTC en ONNX Runtime Web (WebAssembly) con variante primaria FP32 (`3,74 MB`) y respaldo cuantizado INT8 (`0,99 MB`), sin enviar archivos a servidores externos.
+- **Separación Honesta de Niveles de Resultado:** Distingue explícitamente entre **restauración nativa** (`lossless-metadata` en exportaciones propias de Pautello), **lectura automática OMR** (`neural-onnx`, informando la probabilidad media CTC sin presentarla como exactitud musical), **propuestas por revisar** (divisiones de compases, indicaciones locales y metadatos OCR) y **resultado confirmado** (`revisado por persona` frente a `importado con pendientes`).
+- **Comparación con la Fuente y Borrador Persistente:** Panel de revisión lado a lado con recorte sincronizado de la página original, corrección por compás y evento, re-reconocimiento regional, historial deshacer/rehacer de 50 pasos, guardado automático del borrador en IndexedDB (`pautello_omr_drafts`) y preparación explícita para uso sin conexión (`Preparar OMR sin conexión`). Consulta [`docs/omr.md`](docs/omr.md) para el alcance medido y límites conocidos.
+
 ---
 
 ## Descargas y Versiones de Escritorio

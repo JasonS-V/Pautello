@@ -6,7 +6,10 @@ import { describe, it, expect } from 'vitest';
 import * as ort from 'onnxruntime-web/wasm';
 import {
   type OmrModelManifest,
+  buildTrialModelEvaluationRecord,
   verifyModelOutputCompatibility,
+  verifyModelReleaseCoherence,
+  verifyModelRollbackTransition,
   verifyVocabularyAgainstManifest,
 } from '../omrModelContract';
 import { decodeLine, i2wFromVocab } from '../omrDecode';
@@ -239,4 +242,107 @@ describe('OMR Model & Vocabulary Contract (F3.1 & R19)', () => {
     expect(fp32Res.dims[2]).toBe(manifest.vocabulary.totalOutputClasses);
     expect(fp32Res.tokens).toEqual(int8Res.tokens);
   }, 25000);
+
+  it('F9.4: valida coherencia sin mezcla de versiones, regreso a versión previa (rollback) y registro de evaluación de versión de prueba', () => {
+    const manifest = loadManifest();
+    const vocabTokens = loadVocabTokens();
+
+    const validAssets = {
+      [manifest.vocabulary.path]: {
+        sha256: manifest.vocabulary.sha256,
+        bytes: manifest.vocabulary.bytes,
+      },
+      [manifest.variants.fp32.path]: {
+        sha256: manifest.variants.fp32.sha256,
+        bytes: manifest.variants.fp32.bytes,
+      },
+      [manifest.variants.int8.path]: {
+        sha256: manifest.variants.int8.sha256,
+        bytes: manifest.variants.int8.bytes,
+      },
+    };
+
+    expect(verifyModelReleaseCoherence(manifest, validAssets)).toEqual({ valid: true });
+
+    // Mezcla de versiones: vocab de v1 con pesos de otra versión
+    const mixedAssets = {
+      ...validAssets,
+      [manifest.variants.fp32.path]: {
+        sha256: '0'.repeat(64),
+        bytes: manifest.variants.fp32.bytes,
+      },
+    };
+    const mixedCheck = verifyModelReleaseCoherence(manifest, mixedAssets);
+    expect(mixedCheck.valid).toBe(false);
+    expect(mixedCheck.reason).toMatch(/Mezcla de versiones detectada/);
+
+    // Simulación de versión de prueba (trial v2) y rollback limpio a versión previa (v1)
+    const trialManifest: OmrModelManifest = {
+      ...manifest,
+      contractVersion: '1.1.0-trial',
+    };
+    const rollbackOk = verifyModelRollbackTransition({
+      activeTrialManifest: trialManifest,
+      rollbackTargetManifest: manifest,
+      rollbackVocabTokens: vocabTokens,
+      rollbackAssets: validAssets,
+    });
+    expect(rollbackOk).toEqual({
+      canRollback: true,
+      restoredContractVersion: manifest.contractVersion,
+      preservesScoreSchema: true,
+    });
+
+    const rollbackBad = verifyModelRollbackTransition({
+      activeTrialManifest: trialManifest,
+      rollbackTargetManifest: manifest,
+      rollbackVocabTokens: vocabTokens,
+      rollbackAssets: mixedAssets,
+    });
+    expect(rollbackBad.canRollback).toBe(false);
+
+    // Registro de evaluación de versión de prueba con particiones disjuntas y datos locales autorizados
+    const record = buildTrialModelEvaluationRecord({
+      releaseId: 'omr-crnn-ctc-1.1.0-rc1',
+      evaluatedAt: '2026-10-29T14:00:00.000Z',
+      manifest: trialManifest,
+      partitions: {
+        train: ['pdmx-train-01', 'pdmx-train-02'],
+        validation: ['pdmx-line-g2-clean', 'synthetic-f4-meter-tie-clean'],
+        test: ['el-rey-guitarron-local-v1', 'qdrt-guitarron-local-v1', 'usted-guitarron-local-v1'],
+      },
+      authorizedLocalSamples: [
+        'el-rey-guitarron-local-v1',
+        'qdrt-guitarron-local-v1',
+        'usted-guitarron-local-v1',
+      ],
+      metricsSummary: {
+        meanExactEventMatchRate: 0.96,
+        worstExactEventMatchRate: 0.92,
+        regressionGatePassed: true,
+      },
+    });
+    expect(record.releaseId).toBe('omr-crnn-ctc-1.1.0-rc1');
+    expect(record.authorizedLocalSamples).toHaveLength(3);
+    expect(record.metricsSummary.regressionGatePassed).toBe(true);
+
+    // Fuga entre train y test debe rechazarse
+    expect(() =>
+      buildTrialModelEvaluationRecord({
+        releaseId: 'bad-trial',
+        manifest: trialManifest,
+        partitions: {
+          train: ['el-rey-guitarron-local-v1'],
+          validation: ['val-1'],
+          test: ['el-rey-guitarron-local-v1'],
+        },
+        authorizedLocalSamples: ['el-rey-guitarron-local-v1'],
+        metricsSummary: {
+          meanExactEventMatchRate: 1,
+          worstExactEventMatchRate: 1,
+          regressionGatePassed: true,
+        },
+      })
+    ).toThrow(/Fuga de partición/);
+  });
 });
