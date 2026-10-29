@@ -1,13 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import {
-  Plus,
-  Trash2,
-  Copy,
-  Clipboard,
-  Repeat,
-  Sliders,
-  AlertTriangle,
-} from '../../ui/icons';
+import { Plus, Trash2, Copy, Clipboard, Repeat, Sliders, AlertTriangle } from '../../ui/icons';
 import {
   Score,
   Measure,
@@ -343,9 +335,10 @@ export const MeasureInspectorTab: React.FC<MeasureInspectorTabProps> = ({
             aria-label="Estado metrico de cada compas"
           >
             {measureGrid.map(({ idx, state }) => {
-              const inRange = hasRange && measureRange
-                ? idx >= measureRange.start && idx <= measureRange.end
-                : false;
+              const inRange =
+                hasRange && measureRange
+                  ? idx >= measureRange.start && idx <= measureRange.end
+                  : false;
               const isCurrent = idx === selectedMeasureIdx;
               const stateStyle =
                 state === 'complete'
@@ -578,6 +571,15 @@ export const MeasureInspectorTab: React.FC<MeasureInspectorTabProps> = ({
           <span className="text-[11px] text-slate-500 dark:text-slate-400">
             Compases por sistema
           </span>
+          <button
+            type="button"
+            aria-pressed={measuresPerSystem === 0}
+            className={toggleClass(measuresPerSystem === 0)}
+            onClick={() => onSetMeasuresPerSystem?.(0)}
+            disabled={!onSetMeasuresPerSystem}
+          >
+            Seguir saltos de la fuente
+          </button>
           <div className="grid grid-cols-6 gap-1" role="group" aria-label="Compases por sistema">
             {PER_SYSTEM_OPTIONS.map((count) => (
               <button

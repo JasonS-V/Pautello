@@ -10,6 +10,15 @@
  * 5. Remuestreo bilineal en precisión float32 a `TARGET_HEIGHT = 128` y `TARGET_SPACING = 10.0`.
  */
 
+import {
+  composeTransform,
+  invertTransform,
+  rotatePage,
+  type Box,
+  type Transform,
+} from './omrGeometry';
+import { contrastVariants, preservesSymbols, type ContrastMode } from './omrContrast';
+
 export const INK_THRESHOLD = 0.6;
 export const TARGET_SPACING = 10.0;
 export const TARGET_HEIGHT = 128;
@@ -22,6 +31,9 @@ export interface DetectedStaff {
   bottom: number;
   lineSpacing: number;
   lineCenters: number[];
+  quality?: number;
+  left?: number;
+  right?: number;
 }
 
 export interface StaffCropBox {
@@ -51,6 +63,24 @@ export interface NormalizedStaffTensor {
   width: number;
   height: number;
   truncated: boolean;
+  originalCrop: Float32Array;
+  window: { index: number; start: number; end: number; fullWidth: number; contextPrefix?: number };
+  normalizedToOriginal: Transform;
+}
+
+export interface OmrRegion {
+  id: string;
+  bbox: Box;
+  staff?: number;
+  system?: number;
+  route: 'notes' | 'review';
+  reason: 'music' | 'outside-note-tensor' | 'peripheral-ink';
+}
+
+export interface OmrMask {
+  bbox: Box;
+  reason: 'peripheral-ink';
+  applied: false;
 }
 
 export interface PreprocessPageResult {
@@ -59,6 +89,15 @@ export interface PreprocessPageResult {
   systems: number[][];
   usedThreshold: number;
   deskewAngleDeg: number;
+  width: number;
+  height: number;
+  originalToProcessed: Transform;
+  processedToOriginal: Transform;
+  orientation: { quarterTurn: number; halfTurnAmbiguous: boolean };
+  regions: OmrRegion[];
+  systemGroupingAmbiguities: Box[];
+  masks: OmrMask[];
+  contrast: { selected: 'original' | 'local' | 'adaptive'; scores: Record<string, number> };
 }
 
 /** Redondeo par (round-half-even) idéntico a `round()` de Python/NumPy. */
@@ -83,7 +122,11 @@ export function grayFromBytes(bytes: ArrayLike<number>, n: number = bytes.length
  * Convierte un buffer RGBA (4 bytes por píxel, como `ImageData.data` de Canvas)
  * a luminancia Float32Array en [0, 1] componiendo canales transparentes sobre blanco.
  */
-export function rgbaToGray(rgba: Uint8ClampedArray | Uint8Array, width: number, height: number): Float32Array {
+export function rgbaToGray(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number
+): Float32Array {
   const n = width * height;
   const out = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -111,7 +154,12 @@ export function binarize(
   return ink;
 }
 
-function longestRuns(ink: Uint8Array, width: number, height: number, threshold: number): Int32Array {
+function longestRuns(
+  ink: Uint8Array,
+  width: number,
+  height: number,
+  threshold: number
+): Int32Array {
   const best = new Int32Array(height);
   for (let y = 0; y < height; y++) {
     const row = y * width;
@@ -119,9 +167,19 @@ function longestRuns(ink: Uint8Array, width: number, height: number, threshold: 
     for (let x = 0; x < width; x++) sum += ink[row + x];
     if (sum < threshold) continue;
     let run = 0;
+    let gap = 0;
     let b = 0;
     for (let x = 0; x < width; x++) {
-      run = ink[row + x] ? run + 1 : 0;
+      if (ink[row + x]) {
+        run++;
+        gap = 0;
+      } else if (run && gap < Math.max(2, Math.floor(width * 0.004))) {
+        gap++;
+        run++;
+      } else {
+        run = 0;
+        gap = 0;
+      }
       if (run > b) b = run;
     }
     best[y] = b;
@@ -259,15 +317,32 @@ export function findSystems(
     const gapTop = staves[i - 1].bottom + 1;
     const gapBot = staves[i].top - 1;
     let joined = false;
-    if (gapBot > gapTop) {
+    const spacing = (staves[i - 1].lineSpacing + staves[i].lineSpacing) / 2;
+    const startOf = (s: DetectedStaff) =>
+      s.left ??
+      ink
+        .subarray(Math.round(s.lineCenters[0]) * width, (Math.round(s.lineCenters[0]) + 1) * width)
+        .findIndex((v) => v === 1);
+    const left = Math.max(0, startOf(staves[i - 1]), startOf(staves[i]));
+    const right = Math.min(staves[i - 1].right ?? width, staves[i].right ?? width);
+    const columns: number[] = [];
+    if (gapBot > gapTop && gapBot - gapTop <= spacing * 12) {
       const rows = gapBot - gapTop + 1;
-      for (let x = 0; x < width && !joined; x++) {
+      for (let x = left; x < right; x++) {
         let colSum = 0;
         for (let y = gapTop; y <= gapBot; y++) {
           colSum += ink[y * width + x];
         }
-        if (colSum / rows >= minSpanFrac) joined = true;
+        if (
+          colSum / rows >= minSpanFrac &&
+          (columns.length === 0 || x - columns[columns.length - 1] > spacing)
+        )
+          columns.push(x);
       }
+      // Una llave/barra inicial requiere además proximidad; una barra aislada interior no une partes.
+      joined =
+        columns.length >= 2 ||
+        (columns.some((x) => x - left < spacing * 2) && gapBot - gapTop <= spacing * 8);
     }
     if (joined) systems[systems.length - 1].push(i);
     else systems.push([i]);
@@ -358,12 +433,9 @@ export function staffBoxes(
     for (let voiceIdx = 0; voiceIdx < staffIds.length; voiceIdx++) {
       const s = staves[staffIds[voiceIdx]];
       const spacing = s.lineSpacing;
-      const upLimit =
-        voiceIdx > 0 ? (s.top - staves[staffIds[voiceIdx - 1]].bottom) / 2 : null;
+      const upLimit = voiceIdx > 0 ? (s.top - staves[staffIds[voiceIdx - 1]].bottom) / 2 : null;
       const downLimit =
-        voiceIdx + 1 < staffIds.length
-          ? (staves[staffIds[voiceIdx + 1]].top - s.bottom) / 2
-          : null;
+        voiceIdx + 1 < staffIds.length ? (staves[staffIds[voiceIdx + 1]].top - s.bottom) / 2 : null;
 
       const padUp = growEdge(ink, width, height, x0, x1, s.top, -1, spacing, upLimit);
       const padDown = growEdge(ink, width, height, x0, x1, s.bottom, 1, spacing, downLimit);
@@ -396,7 +468,29 @@ export function detect(
 ): StaffDetectionResult {
   const ink = binarize(gray, width, height, threshold);
   const runs = findStaffLines(ink, width, height, minRunFrac);
-  const staves = groupLinesIntoStaves(runs);
+  const staves = groupLinesIntoStaves(runs).filter((staff) => {
+    const extents = staff.lineCenters.map((center) => {
+      const y = Math.round(center);
+      let left = width,
+        right = 0,
+        count = 0;
+      for (let x = 0; x < width; x++)
+        if (ink[y * width + x]) {
+          left = Math.min(left, x);
+          right = x + 1;
+          count++;
+        }
+      return { left, right, count };
+    });
+    staff.left = Math.max(...extents.map((e) => e.left));
+    staff.right = Math.min(...extents.map((e) => e.right));
+    const span = Math.max(1, staff.right - staff.left);
+    const continuity = Math.min(...extents.map((e) => e.count / span));
+    const gaps = staff.lineCenters.slice(1).map((v, i) => v - staff.lineCenters[i]);
+    const parallelism = 1 - (Math.max(...gaps) - Math.min(...gaps)) / staff.lineSpacing;
+    staff.quality = Math.max(0, Math.min(1, continuity)) * Math.max(0, parallelism);
+    return span >= width * minRunFrac && staff.quality >= 0.55;
+  });
   const systems = findSystems(ink, width, staves);
   return {
     lineRuns: runs.length,
@@ -419,7 +513,6 @@ export function detectAdaptive(
   height: number
 ): StaffDetectionResult {
   const primary = detect(gray, width, height, INK_THRESHOLD, 0.1);
-  if (primary.boxes.length > 0) return primary;
 
   const fallbackCandidates: Array<{ threshold: number; minRun: number }> = [
     { threshold: 0.75, minRun: 0.08 },
@@ -428,18 +521,30 @@ export function detectAdaptive(
     { threshold: 0.45, minRun: 0.08 },
   ];
 
-  let bestResult = primary;
+  const staves = [...primary.staves];
+  let usedThreshold = primary.usedThreshold;
   for (const cand of fallbackCandidates) {
     const res = detect(gray, width, height, cand.threshold, cand.minRun);
-    if (res.boxes.length > bestResult.boxes.length) {
-      bestResult = res;
-      if (bestResult.boxes.length >= 1 && cand.threshold <= 0.86) {
-        break;
-      }
+    for (const staff of res.staves) {
+      const existing = staves.findIndex(
+        (s) => Math.abs(s.top - staff.top) < Math.min(s.lineSpacing, staff.lineSpacing) * 2
+      );
+      if (existing < 0) {
+        staves.push(staff);
+        usedThreshold = Math.max(usedThreshold, cand.threshold);
+      } else if ((staff.quality ?? 0) > (staves[existing].quality ?? 0)) staves[existing] = staff;
     }
   }
-
-  return bestResult;
+  staves.sort((a, b) => a.top - b.top);
+  const ink = binarize(gray, width, height, usedThreshold);
+  const systems = findSystems(ink, width, staves);
+  return {
+    staves,
+    systems,
+    boxes: staffBoxes(ink, width, height, staves, systems),
+    usedThreshold,
+    lineRuns: staves.length * 5,
+  };
 }
 
 export function resizeBilinear(
@@ -602,27 +707,15 @@ export function deskewGray(
     }
   }
 
-  const rad = (bestAngle * Math.PI) / 180;
-  const sin = Math.sin(rad);
-  const cos = Math.cos(rad);
-  const cx = width / 2;
-  const cy = height / 2;
-  const rotated = new Float32Array(width * height).fill(1);
-
-  for (let y = 0; y < height; y++) {
-    const dy = y - cy;
-    const rowOff = y * width;
-    for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const sx = Math.round(dx * cos - dy * sin + cx);
-      const sy = Math.round(dx * sin + dy * cos + cy);
-      if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
-        rotated[rowOff + x] = gray[sy * width + sx];
-      }
-    }
-  }
-
-  return { gray: rotated, angleDeg: bestAngle };
+  const candidate = rotatePage(gray, width, height, -bestAngle);
+  const quality = (image: Float32Array, w: number, h: number) =>
+    detectAdaptive(image, w, h).staves.reduce((sum, staff) => sum + (staff.quality ?? 0), 0);
+  if (
+    quality(candidate.gray, candidate.width, candidate.height) <=
+    quality(gray, width, height) * 1.01
+  )
+    return { gray, angleDeg: 0 };
+  return { gray: candidate.gray, angleDeg: bestAngle };
 }
 
 /**
@@ -639,55 +732,78 @@ export function preprocessPage(
     maxWidth?: number;
     threshold?: number;
     enableDeskew?: boolean;
+    rotation?: 0 | 90 | 180 | 270;
+    contrast?: ContrastMode;
   } = {}
 ): PreprocessPageResult {
   const targetSpacing = opts.targetSpacing ?? TARGET_SPACING;
   const targetHeight = opts.targetHeight ?? TARGET_HEIGHT;
   const maxWidth = opts.maxWidth ?? Math.round((MAX_WIDTH * targetSpacing) / 10.0);
 
-  const { gray, angleDeg } =
+  let oriented = rotatePage(rawGray, width, height, opts.rotation ?? 0);
+  let quarterTurn = opts.rotation ?? 0;
+  if (opts.rotation === undefined) {
+    const horizontal = detectAdaptive(rawGray, width, height);
+    // Las cinco líneas no distinguen 0° de 180°: conservar esa ambigüedad para revisión.
+    if (!horizontal.staves.length) {
+      const candidate = rotatePage(rawGray, width, height, 90);
+      const correction =
+        opts.enableDeskew !== false
+          ? deskewGray(candidate.gray, candidate.width, candidate.height).angleDeg
+          : 0;
+      const checked = rotatePage(candidate.gray, candidate.width, candidate.height, -correction);
+      if (detectAdaptive(checked.gray, checked.width, checked.height).staves.length) {
+        oriented = candidate;
+        quarterTurn = 90;
+      }
+    }
+  }
+  const angleDeg =
     opts.enableDeskew !== false
-      ? deskewGray(rawGray, width, height)
-      : { gray: rawGray, angleDeg: 0 };
-
+      ? deskewGray(oriented.gray, oriented.width, oriented.height).angleDeg
+      : 0;
+  const deskewed = rotatePage(oriented.gray, oriented.width, oriented.height, -angleDeg);
+  const originalToProcessed = composeTransform(deskewed.transform, oriented.transform);
+  const processedToOriginal = invertTransform(originalToProcessed);
+  width = deskewed.width;
+  height = deskewed.height;
+  let gray = deskewed.gray;
   let det =
     opts.threshold !== undefined
       ? detect(gray, width, height, opts.threshold)
       : detectAdaptive(gray, width, height);
-
-  // Fallback para recortes directos de un único pentagrama (ej. imagen apaisada de 1 sola línea)
-  if (det.boxes.length === 0 && width > height * 2 && height >= 40 && height <= 360) {
-    const estSpacing = Math.max(6, height / 10);
-    const singleBox: StaffCropBox = {
-      staff: 0,
-      system: 0,
-      voice: 0,
-      x: 0,
-      y: 0,
-      w: width,
-      h: height,
-      lineSpacing: estSpacing,
-      padUp: Math.round((height - 4 * estSpacing) / 2),
-      padDown: Math.round((height - 4 * estSpacing) / 2),
-    };
-    det = {
-      lineRuns: 5,
-      staves: [
-        {
-          top: singleBox.padUp,
-          bottom: height - singleBox.padDown,
-          lineSpacing: estSpacing,
-          lineCenters: [0, 1, 2, 3, 4].map((i) => singleBox.padUp + i * estSpacing),
-        },
-      ],
-      systems: [[0]],
-      boxes: [singleBox],
-      usedThreshold: INK_THRESHOLD,
-    };
+  const score = (d: StaffDetectionResult, image: Float32Array) =>
+    d.staves.reduce((sum, s) => {
+      let strength = 0,
+        count = 0;
+      for (const center of s.lineCenters)
+        for (let x = s.left ?? 0; x < (s.right ?? width); x++) {
+          strength += 1 - image[Math.round(center) * width + x];
+          count++;
+        }
+      return sum + (s.quality ?? 0) * (0.5 + (0.5 * strength) / Math.max(1, count));
+    }, 0);
+  const scores: Record<string, number> = { original: score(det, gray) };
+  let selected: ContrastMode = 'original';
+  const variants = contrastVariants(gray, width, height);
+  for (const mode of ['local', 'adaptive'] as const) {
+    const candidate = detectAdaptive(variants[mode], width, height);
+    scores[mode] = score(candidate, variants[mode]);
+    if (
+      opts.contrast === mode ||
+      (opts.contrast === undefined &&
+        scores[mode] > score(det, gray) * 1.1 &&
+        preservesSymbols(deskewed.gray, variants[mode]) &&
+        candidate.staves.length >= det.staves.length)
+    ) {
+      selected = mode;
+      gray = variants[mode];
+      det = candidate;
+    }
   }
-
-  const enhanceFaintInk = det.usedThreshold > 0.65;
   const inputs: NormalizedStaffTensor[] = [];
+  const regions: OmrRegion[] = [];
+  const masks: OmrMask[] = [];
 
   for (const box of det.boxes) {
     const crop = new Float32Array(box.w * box.h);
@@ -695,44 +811,58 @@ export function preprocessPage(
       const src = (box.y + y) * width + box.x;
       const dst = y * box.w;
       for (let x = 0; x < box.w; x++) {
-        let v = gray[src + x];
-        if (enhanceFaintInk && v < det.usedThreshold) {
-          // Oscurecer pautas grises claras (como #cbd5e1) para igualar la distribución de tinta del modelo ONNX
-          v = fr(Math.max(0, (v - 0.35) * 0.45));
-        }
-        crop[dst + x] = v;
+        crop[dst + x] = gray[src + x];
       }
     }
 
-    // Suprimir elementos periféricos fuera de la pauta que confunden a la red neuronal:
-    // 1. En la zona de clave y armadura (primer 20% del pentagrama), borrar cualquier símbolo
-    //    situado por encima de la clave (> 0.95 espacios sobre la primera línea), como el Segno 𝄋,
-    //    para evitar que se interprete erróneamente como un sostenido (F#).
-    const clefMarginW = Math.round(Math.min(box.w * 0.2, box.lineSpacing * 12));
-    const clefCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 0.95));
-    for (let y = 0; y < clefCeiling; y++) {
-      const rowDst = y * box.w;
-      for (let x = 0; x < clefMarginW; x++) {
-        crop[rowDst + x] = 1.0;
-      }
-    }
-
-    // 2. A lo largo del resto del pentagrama, suprimir texto, números de compás (ej. 11, 19, 28, 39, 50, 52),
-    //    letras de ensayo [A], [B], indicaciones de tempo o modulación métrica situadas por encima de las notas (> 1.8 espacios).
-    const staffCeiling = Math.max(0, box.padUp - Math.round(box.lineSpacing * 1.8));
-    for (let y = 0; y < staffCeiling; y++) {
-      const rowDst = y * box.w;
-      for (let x = clefMarginW; x < box.w; x++) {
-        crop[rowDst + x] = 1.0;
-      }
-    }
-
-    // 3. Suprimir notas al pie, texto de copyright o pies de página por debajo de 1.8 espacios de la quinta línea.
-    const staffFloor = Math.min(box.h, box.padUp + Math.round(box.lineSpacing * 5.8));
-    for (let y = staffFloor; y < box.h; y++) {
-      const rowDst = y * box.w;
-      for (let x = 0; x < box.w; x++) {
-        crop[rowDst + x] = 1.0;
+    const originalCrop = new Float32Array(box.w * box.h);
+    for (let y = 0; y < box.h; y++)
+      originalCrop.set(
+        deskewed.gray.subarray((box.y + y) * width + box.x, (box.y + y) * width + box.x + box.w),
+        y * box.w
+      );
+    regions.push({
+      id: `staff-${box.staff}`,
+      bbox: [box.x, box.y, box.w, box.h],
+      staff: box.staff,
+      system: box.system,
+      route: 'notes',
+      reason: 'music',
+    });
+    // Las máscaras periféricas son propuestas visibles; no se aplican sin evidencia musical.
+    const candidates: Box[] = [
+      [
+        box.x,
+        box.y,
+        Math.min(box.w, Math.round(box.lineSpacing * 12)),
+        Math.max(0, Math.floor(box.padUp - box.lineSpacing * 0.95)),
+      ],
+      [box.x, box.y, box.w, Math.max(0, Math.floor(box.padUp - box.lineSpacing * 1.8))],
+      [
+        box.x,
+        box.y + Math.ceil(box.padUp + box.lineSpacing * 5.8),
+        box.w,
+        Math.max(0, box.h - Math.ceil(box.padUp + box.lineSpacing * 5.8)),
+      ],
+    ];
+    for (const bbox of candidates) {
+      let ink = false;
+      for (let y = bbox[1]; y < bbox[1] + bbox[3] && !ink; y++)
+        for (let x = bbox[0]; x < bbox[0] + bbox[2]; x++)
+          if (deskewed.gray[y * width + x] < 0.94) {
+            ink = true;
+            break;
+          }
+      if (ink) {
+        masks.push({ bbox, reason: 'peripheral-ink', applied: false });
+        regions.push({
+          id: `peripheral-${regions.length}`,
+          bbox,
+          staff: box.staff,
+          system: box.system,
+          route: 'review',
+          reason: 'peripheral-ink',
+        });
       }
     }
 
@@ -746,23 +876,97 @@ export function preprocessPage(
       targetHeight
     );
 
-    let w = norm.width;
-    let truncated = false;
-    if (w > maxWidth) {
-      w = maxWidth;
-      truncated = true;
+    const overlap = Math.min(Math.floor(maxWidth / 3), Math.round(targetSpacing * 24));
+    if (maxWidth <= 0 || maxWidth <= overlap) throw new Error('Ancho de ventana OMR inválido.');
+    const scale = box.w / norm.width;
+    const outH = Math.max(1, pyRoundInt((box.h * targetSpacing) / box.lineSpacing));
+    const top = pyRoundInt(
+      (targetHeight - 4 * targetSpacing) / 2 - (box.padUp * targetSpacing) / box.lineSpacing
+    );
+    const prefixWidth = Math.min(Math.floor(maxWidth / 8), Math.round(targetSpacing * 16));
+    for (let start = 0, index = 0; start < norm.width; index++) {
+      const contextPrefix = index ? prefixWidth : 0;
+      const end = Math.min(start + maxWidth - contextPrefix, norm.width),
+        w = end - start + contextPrefix;
+      const data = new Float32Array(norm.height * w);
+      for (let y = 0; y < norm.height; y++) {
+        for (let x = 0; x < w; x++)
+          data[y * w + x] =
+            1 - norm.data[y * norm.width + (x < contextPrefix ? x : start + x - contextPrefix)];
+      }
+      const normalizedToProcessed: Transform = [
+        scale,
+        0,
+        0,
+        box.h / outH,
+        box.x + (start - contextPrefix) * scale,
+        box.y - (top * box.h) / outH,
+      ];
+      inputs.push({
+        box,
+        data,
+        width: w,
+        height: norm.height,
+        truncated: false,
+        originalCrop,
+        window: { index, start, end, fullWidth: norm.width, contextPrefix },
+        normalizedToOriginal: composeTransform(processedToOriginal, normalizedToProcessed),
+      });
+      if (end === norm.width) break;
+      start = end - overlap;
     }
+  }
 
-    const data = new Float32Array(norm.height * w);
-    for (let y = 0; y < norm.height; y++) {
-      const src = y * norm.width;
-      const dst = y * w;
-      for (let x = 0; x < w; x++) {
-        data[dst + x] = 1.0 - norm.data[src + x];
+  // Toda tinta que no entra en el tensor mantiene una región original para revisión/indicaciones.
+  let bandStart = -1,
+    left = width,
+    right = 0,
+    lastInk = -1;
+  const flush = () => {
+    if (bandStart < 0) return;
+    const bbox: Box = [left, bandStart, right - left, lastInk - bandStart + 1];
+    const nearest = det.boxes.reduce<StaffCropBox | undefined>(
+      (best, b) => (!best || Math.abs(b.y - bandStart) < Math.abs(best.y - bandStart) ? b : best),
+      undefined
+    );
+    regions.push({
+      id: `pending-${regions.length}`,
+      bbox,
+      staff: nearest?.staff,
+      system: nearest?.system,
+      route: 'review',
+      reason: 'outside-note-tensor',
+    });
+    bandStart = -1;
+    left = width;
+    right = 0;
+  };
+  for (let y = 0; y < height; y++) {
+    let found = false;
+    for (let x = 0; x < width; x++) {
+      if (deskewed.gray[y * width + x] >= 0.94) continue;
+      const covered = det.boxes.some((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+      if (!covered) {
+        found = true;
+        left = Math.min(left, x);
+        right = Math.max(right, x + 1);
       }
     }
-
-    inputs.push({ box, data, width: w, height: norm.height, truncated });
+    if (found) {
+      if (bandStart < 0) bandStart = y;
+      lastInk = y;
+    } else if (bandStart >= 0 && y - lastInk > 2) flush();
+  }
+  flush();
+  const systemGroupingAmbiguities: Box[] = [];
+  for (let i = 1; i < det.staves.length; i++) {
+    const previous = det.staves[i - 1],
+      current = det.staves[i];
+    if (
+      !det.systems.some((system) => system.includes(i - 1) && system.includes(i)) &&
+      current.top - previous.bottom < Math.max(previous.lineSpacing, current.lineSpacing) * 12
+    )
+      systemGroupingAmbiguities.push([0, previous.top, width, current.bottom - previous.top]);
   }
 
   return {
@@ -771,5 +975,14 @@ export function preprocessPage(
     systems: det.systems,
     usedThreshold: det.usedThreshold,
     deskewAngleDeg: angleDeg,
+    width,
+    height,
+    originalToProcessed,
+    processedToOriginal,
+    orientation: { quarterTurn, halfTurnAmbiguous: opts.rotation === undefined },
+    regions,
+    systemGroupingAmbiguities,
+    masks,
+    contrast: { selected, scores },
   };
 }

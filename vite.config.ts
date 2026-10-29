@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
@@ -11,7 +12,7 @@ import react from '@vitejs/plugin-react';
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self' file:",
   "script-src 'self' 'wasm-unsafe-eval' file: blob:",
-  "worker-src 'self' file: blob:",
+  "worker-src 'self' file: blob: data:",
   "style-src 'self' 'unsafe-inline' file:",
   "img-src 'self' file: data: blob:",
   "font-src 'self' file: data:",
@@ -49,17 +50,46 @@ const ALWAYS_PRECACHE = [
   'favicon.svg',
 ];
 
-function buildServiceWorker(files: string[]): string {
+const OMR_RESOURCES = [
+  'omr/model-manifest.json',
+  'omr/vocab.json',
+  'omr/omr-line.fp32.onnx',
+  'omr/omr-line.int8.onnx',
+  'omr/pdf.worker.min.mjs',
+  'omr/ocr/worker.min.js',
+  'omr/ocr/tesseract-core-lstm.wasm.js',
+  'omr/ocr/tesseract-core-lstm.wasm',
+  'omr/ocr/eng.traineddata.gz',
+  'omr/ocr/spa.traineddata.gz',
+];
+
+function buildServiceWorker(files: string[], wasm: Array<{ url: string; sha256: string }>): string {
   const precache = ['./', ...files.map((file) => `./${file}`)].sort();
-  const version = createHash('sha256').update(precache.join('|')).digest('hex').slice(0, 8);
+  const omr = [
+    ...OMR_RESOURCES.map((url) => {
+      const bytes = readFileSync(new URL(`./public/${url}`, import.meta.url));
+      const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
+      return {
+        url: `./${url}`,
+        sha256: url.endsWith('.gz') ? [hash(bytes), hash(gunzipSync(bytes))] : hash(bytes),
+      };
+    }),
+    ...wasm,
+  ];
+  const version = createHash('sha256')
+    .update(JSON.stringify({ precache, omr }))
+    .digest('hex')
+    .slice(0, 12);
 
   return readFileSync(SW_TEMPLATE_PATH, 'utf8')
     .replace('__SW_VERSION__', version)
-    .replace('__SW_PRECACHE__', JSON.stringify(precache, null, 2));
+    .replace('__SW_PRECACHE__', JSON.stringify(precache, null, 2))
+    .replace('__SW_OMR__', JSON.stringify(omr, null, 2));
 }
 
 export default defineConfig({
   base: './',
+  worker: { format: 'es' },
   optimizeDeps: {
     exclude: ['onnxruntime-web'],
   },
@@ -71,10 +101,19 @@ export default defineConfig({
       generateBundle(_options, bundle) {
         const files = [...Object.keys(bundle).filter((file) => PRECACHE_EXTENSIONS.test(file))];
         files.push(...ALWAYS_PRECACHE);
+        const wasm = Object.entries(bundle)
+          .filter(([file]) => /^assets\/ort-wasm-simd-threaded-[^.]+\.wasm$/.test(file))
+          .map(([file, output]) => ({
+            url: `./${file}`,
+            sha256: createHash('sha256')
+              .update(output.type === 'asset' ? output.source : output.code)
+              .digest('hex'),
+          }));
+        if (wasm.length !== 1) throw new Error('El build OMR requiere un WASM ONNX versionado.');
         this.emitFile({
           type: 'asset',
           fileName: 'sw.js',
-          source: buildServiceWorker(files),
+          source: buildServiceWorker(files, wasm),
         });
       },
     },

@@ -24,14 +24,69 @@
 const VERSION = '__SW_VERSION__';
 const CACHE = `pautello-${VERSION}`;
 const PRECACHE = __SW_PRECACHE__;
+const OMR = __SW_OMR__;
+const OMR_CACHE = `pautello-omr-${VERSION}`;
+
+async function matchesHash(response, hash) {
+  if (!response?.ok) return false;
+  const digest = await crypto.subtle.digest('SHA-256', await response.arrayBuffer());
+  const actual = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  return Array.isArray(hash) ? hash.includes(actual) : actual === hash;
+}
+
+async function omrReady() {
+  const cache = await caches.open(OMR_CACHE);
+  for (const resource of OMR) {
+    if (!(await matchesHash(await cache.match(resource.url), resource.sha256))) return false;
+  }
+  return true;
+}
+
+self.addEventListener('message', (event) => {
+  if (!['OMR_STATUS', 'OMR_PREPARE'].includes(event.data?.type) || !event.ports[0]) return;
+  const port = event.ports[0];
+  event.waitUntil(
+    (async () => {
+      try {
+        if (event.data.type === 'OMR_STATUS') {
+          port.postMessage({ ready: await omrReady(), total: OMR.length });
+          return;
+        }
+        const cache = await caches.open(OMR_CACHE);
+        for (const [index, resource] of OMR.entries()) {
+          if (!(await matchesHash(await cache.match(resource.url), resource.sha256))) {
+            const response = await fetch(resource.url, { cache: 'reload' });
+            if (!(await matchesHash(response.clone(), resource.sha256))) {
+              throw new Error(`Recurso OMR incompleto o alterado: ${resource.url}`);
+            }
+            await cache.put(resource.url, response);
+          }
+          port.postMessage({ completed: index + 1, total: OMR.length });
+        }
+        const keys = await caches.keys();
+        await Promise.all(
+          keys
+            .filter((key) => key.startsWith('pautello-omr-') && key !== OMR_CACHE)
+            .map((key) => caches.delete(key))
+        );
+        port.postMessage({ ready: true, total: OMR.length });
+      } catch (error) {
+        port.postMessage({
+          ready: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })()
+  );
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      // Uno a uno y tolerando fallos: si un solo archivo no responde, `addAll`
-      // abortaría la instalación entera y la app se quedaría sin modo offline.
-      .then((cache) => Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => undefined))))
+      .then((cache) => cache.addAll(PRECACHE))
       .then(() => self.skipWaiting())
   );
 });
@@ -41,7 +96,14 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
+        Promise.all(
+          keys
+            .filter(
+              (key) =>
+                key.startsWith('pautello-') && !key.startsWith('pautello-omr-') && key !== CACHE
+            )
+            .map((key) => caches.delete(key))
+        )
       )
       .then(() => self.clients.claim())
   );
@@ -69,8 +131,12 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() =>
           caches
-            .match('./index.html')
-            .then((cached) => cached || caches.match('./'))
+            .open(CACHE)
+            .then((cache) =>
+              cache
+                .match('./index.html', { ignoreVary: true })
+                .then((cached) => cached || cache.match('./', { ignoreVary: true }))
+            )
             .then((cached) => cached || Response.error())
         )
     );
@@ -78,7 +144,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.open(CACHE).then(async (appCache) => {
+      const cached =
+        (await appCache.match(request, { ignoreVary: true })) ||
+        (await (await caches.open(OMR_CACHE)).match(request, { ignoreVary: true }));
       if (cached) return cached;
       return fetch(request).then((response) => {
         if (response.ok && response.type === 'basic') {

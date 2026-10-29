@@ -33,6 +33,30 @@ const validScore = (): Score => ({
 const firstItem = (score: Score): ScoreItem => score.staves[0].measures[0].items[0];
 
 describe('normalizeScore: partituras válidas', () => {
+  it('conserva los campos editoriales y las indicaciones locales de una importación', () => {
+    const source = validScore();
+    source.arranger = 'Jeff Nevin';
+    source.metronomeMark = { beatUnit: 'h', dots: 0, perMinute: 60 };
+    source.staves[0].measures[0].printedNumber = 13;
+    source.staves[0].measures[0].meterGlyph = 'common';
+    source.staves[0].measures[0].metronomeMark = { beatUnit: 'q', dots: 0, perMinute: 90 };
+    source.staves[0].measures[0].metricEquivalence = {
+      previousUnit: '8',
+      previousDots: 0,
+      nextUnit: 'q',
+      nextDots: 0,
+    };
+    const score = normalizeScore(JSON.parse(JSON.stringify(source)))!;
+    expect(score.arranger).toBe('Jeff Nevin');
+    expect(score.metronomeMark).toEqual({ beatUnit: 'h', dots: 0, perMinute: 60 });
+    expect(score.staves[0].measures[0]).toMatchObject({
+      printedNumber: 13,
+      meterGlyph: 'common',
+      metronomeMark: { beatUnit: 'q', dots: 0, perMinute: 90 },
+      metricEquivalence: { previousUnit: '8', previousDots: 0, nextUnit: 'q', nextDots: 0 },
+    });
+  });
+
   it('conserva el material de una partitura correcta', () => {
     const score = normalizeScore(validScore())!;
 

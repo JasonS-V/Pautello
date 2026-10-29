@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { exportScoreToMusicXml, importMusicXmlToScore } from './musicxml';
 import { exportScoreToMidi } from '../audio/midiExport';
 import { Score } from '../types/music';
@@ -53,6 +53,101 @@ const mockScore: Score = {
 };
 
 describe('MusicXML Export and Import', () => {
+  it('rechaza indicaciones avanzadas sin parser DOM en lugar de perderlas', () => {
+    const xml = exportScoreToMusicXml({ ...mockScore, arranger: 'Arreglista' });
+    vi.stubGlobal('DOMParser', undefined);
+    try {
+      expect(() => importMusicXmlToScore(xml)).toThrow('requiere un parser XML con DOM');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('round-trips local directions, metadata, 32nds, tuplets and a fermata rest', () => {
+    const score: Score = {
+      ...mockScore,
+      arranger: 'Arreglista',
+      copyright: '© Pautello',
+      staves: [
+        {
+          ...mockScore.staves[0],
+          measures: [
+            {
+              id: 'first',
+              items: [
+                {
+                  id: 'n1',
+                  type: 'note',
+                  duration: '32',
+                  isDotted: true,
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                },
+              ],
+              systemBreak: true,
+              navigationMark: 'segno',
+            },
+            {
+              id: 'second',
+              items: [
+                { id: 'r', type: 'rest', duration: 'q', articulation: 'fermata' },
+                {
+                  id: 't',
+                  type: 'note',
+                  duration: 'q',
+                  tuplet: { actual: 3, normal: 2 },
+                  pitch: { step: 'D', octave: 4, accidental: null },
+                },
+              ],
+              timeSignatureChange: { beats: 3, beatType: 4 },
+              keySignatureChange: 'G',
+              rehearsalMark: 'A',
+              tempoText: 'Moderato',
+              tempoBpm: 90,
+              metronomeMark: { beatUnit: 'h', dots: 0, perMinute: 45 },
+              metricEquivalence: { previousUnit: '8', previousDots: 0, nextUnit: 'q', nextDots: 0 },
+              navigationMark: 'dalSegnoAlCoda',
+              navigationTargetMeasureId: 'first',
+              navigationExitMeasureId: 'third',
+            },
+            {
+              id: 'third',
+              items: [{ id: 'r3', type: 'rest', duration: 'w' }],
+              navigationMark: 'toCoda',
+            },
+            {
+              id: 'fourth',
+              items: [{ id: 'r4', type: 'rest', duration: 'w' }],
+              navigationMark: 'coda',
+            },
+          ],
+        },
+      ],
+    };
+    const xml = exportScoreToMusicXml(score);
+    expect(xml).toContain('<divisions>48</divisions>');
+    expect(xml).toContain('<duration>9</duration>');
+    expect(xml).toContain('<duration>32</duration>');
+    expect(xml).toContain('<print new-system="yes"/>');
+    expect(xml).toContain('<creator type="arranger">Arreglista</creator>');
+    const parsed = importMusicXmlToScore(xml);
+    expect(parsed.arranger).toBe('Arreglista');
+    expect(parsed.copyright).toBe('© Pautello');
+    expect(parsed.staves[0].measures[0].systemBreak).toBe(true);
+    const second = parsed.staves[0].measures[1];
+    expect(second.timeSignatureChange).toEqual({ beats: 3, beatType: 4 });
+    expect(second.keySignatureChange).toBe('G');
+    expect(second.rehearsalMark).toBe('A');
+    expect(second.metronomeMark).toEqual({ beatUnit: 'h', dots: 0, perMinute: 45 });
+    expect(second.metricEquivalence).toEqual({
+      previousUnit: '8',
+      previousDots: 0,
+      nextUnit: 'q',
+      nextDots: 0,
+    });
+    expect(second.navigationMark).toBe('dalSegnoAlCoda');
+    expect(second.navigationTargetMeasureId).toBe(parsed.staves[0].measures[0].id);
+    expect(second.items[0].articulation).toBe('fermata');
+    expect(second.items[1].tuplet).toEqual({ actual: 3, normal: 2 });
+  });
   it('generates valid MusicXML containing title, composer, notes', () => {
     const xml = exportScoreToMusicXml(mockScore);
     expect(xml).toContain('<work-title>Estudio en Do</work-title>');
@@ -426,6 +521,7 @@ describe('MusicXML Export and Import', () => {
               multimeasureRest: 4,
               items: [{ id: 'r2', type: 'rest', duration: 'w' }],
             },
+            { id: 'm-3', items: [{ id: 'r3', type: 'rest', duration: 'w' }] },
           ],
         },
       ],

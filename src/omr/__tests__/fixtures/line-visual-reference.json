@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "source": "line.png",
+  "sourceSha256": "3b754a82d1cdbca3a0df6bf83745264f2c2adab61f98d348b67deb4f3cf58cee",
+  "coordinateSpace": "original-image-pixels",
+  "review": "Inspección visual independiente de las barras y cabezas de line.png; no derivada de CTC.",
+  "barTolerancePx": 8,
+  "bars": [465, 760, 1094, 1389, 1647, 2016],
+  "heads": [
+    { "x": 116, "y": 82, "head": "filled", "stem": true },
+    { "x": 207, "y": 91, "head": "filled", "stem": true },
+    { "x": 270, "y": 91, "head": "filled", "stem": true },
+    { "x": 322, "y": 100, "head": "hollow", "stem": true },
+    { "x": 496, "y": 91, "head": "hollow", "stem": true },
+    { "x": 1420, "y": 100, "head": "hollow", "stem": false },
+    { "x": 1701, "y": 117, "head": "filled", "stem": true },
+    { "x": 1785, "y": 117, "head": "filled", "stem": true },
+    { "x": 1873, "y": 100, "head": "hollow", "stem": true }
+  ],
+  "dots": []
+}

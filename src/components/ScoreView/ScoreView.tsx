@@ -76,12 +76,12 @@ export interface ScoreViewProps {
 const LINE_SPACING = 10;
 const STAFF_HEIGHT = 40;
 const STAFF_SPACING = 85;
-const STAFF_TOP_OFFSET = 58;
+const STAFF_TOP_OFFSET = 90;
 const DRAG_THRESHOLD_PX = 4;
 const DRAG_REORDER_THRESHOLD_PX = 20;
 
 const PAGE_OPTIONS = {
-  pageHeight: 1188,
+  pageHeight: 1056, // Carta es más corta que A4; ambos tamaños caben en esta paginación.
   firstPageTopMargin: 130,
   pageTopMargin: 65,
   pageBottomMargin: 60,
@@ -216,14 +216,18 @@ const ScoreViewComponent: React.FC<ScoreViewProps> = ({
   const stavesCount = displayStaves.length;
   const totalMeasures = primaryStaff.measures.length;
 
-  const getStaffTopOffset = useCallback((sIdx: number) => STAFF_TOP_OFFSET + sIdx * STAFF_SPACING, []);
+  const getStaffTopOffset = useCallback(
+    (sIdx: number) => STAFF_TOP_OFFSET + sIdx * STAFF_SPACING,
+    []
+  );
   const systemBottomPadding = showTablature ? 80 : 35;
   const systemHeight =
     STAFF_TOP_OFFSET + (stavesCount - 1) * STAFF_SPACING + STAFF_HEIGHT + systemBottomPadding;
   const systemBottomY = getStaffTopOffset(stavesCount - 1) + STAFF_HEIGHT;
 
   const systems = useMemo(
-    () => computeSystems(primaryStaff.measures, measuresPerSystem || 3),
+    () =>
+      computeSystems(primaryStaff.measures, measuresPerSystem === 0 ? 12 : measuresPerSystem || 3),
     [primaryStaff.measures, measuresPerSystem]
   );
   const pages = useMemo(
@@ -269,7 +273,9 @@ const ScoreViewComponent: React.FC<ScoreViewProps> = ({
       }
 
       setHoveredMeasureIdx(mIdx);
-      setHoveredStaffStep(yToStaffStep(svgY - getStaffTopOffset(targetDisplayStaffIdx), LINE_SPACING));
+      setHoveredStaffStep(
+        yToStaffStep(svgY - getStaffTopOffset(targetDisplayStaffIdx), LINE_SPACING)
+      );
       setHoveredStaffIdx(isPartView ? effectiveStaffIdx : targetDisplayStaffIdx);
       setHoveredX(e.clientX - svgRect.left - measureX);
     },
@@ -298,8 +304,14 @@ const ScoreViewComponent: React.FC<ScoreViewProps> = ({
 
       if (isOctaveLockEnabled) {
         // Dentro del carril de la octava activa se fuerza esa octava; fuera, altura libre.
-        const stepHigh = pitchToStaffStep({ step: 'B', octave: activeOctave, accidental: null }, targetClef);
-        const stepLow = pitchToStaffStep({ step: 'C', octave: activeOctave, accidental: null }, targetClef);
+        const stepHigh = pitchToStaffStep(
+          { step: 'B', octave: activeOctave, accidental: null },
+          targetClef
+        );
+        const stepLow = pitchToStaffStep(
+          { step: 'C', octave: activeOctave, accidental: null },
+          targetClef
+        );
         const isInsideLane =
           hoveredStaffStep >= Math.min(stepHigh, stepLow) - 1 &&
           hoveredStaffStep <= Math.max(stepHigh, stepLow) + 1;
@@ -393,7 +405,12 @@ const ScoreViewComponent: React.FC<ScoreViewProps> = ({
         if (current?.hasMoved) {
           const { score: liveScore, onMoveItem: moveItem } = latestRef.current;
           const staffMeasures = liveScore.staves[staffIdx]?.measures ?? [];
-          const drop = resolveDropTarget(ev.clientX, ev.clientY, actualMeasureIdx, staffMeasures.length);
+          const drop = resolveDropTarget(
+            ev.clientX,
+            ev.clientY,
+            actualMeasureIdx,
+            staffMeasures.length
+          );
 
           let targetItemIdx: number | null = null;
           const dx = ev.clientX - current.startX;

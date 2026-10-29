@@ -3,6 +3,15 @@ import { calculateItemPositions, detectBeamGroups } from './beaming';
 import { ScoreItem } from '../types/music';
 
 describe('beaming engraver', () => {
+  it('keeps positions inside a narrow redistributed measure', () => {
+    const items: ScoreItem[] = [
+      { id: 'a', type: 'rest', duration: 'q' },
+      { id: 'b', type: 'rest', duration: 'q' },
+    ];
+    const positions = calculateItemPositions(items, 65, { beats: 3, beatType: 4 });
+    expect(positions[0].x).toBeLessThan(positions[1].x);
+    expect(positions[1].x).toBeLessThan(65 - 12);
+  });
   it('centers a single item in a measure', () => {
     const items: ScoreItem[] = [{ id: '1', type: 'rest', duration: 'w' }];
     const positions = calculateItemPositions(items, 300, { beats: 4, beatType: 4 });

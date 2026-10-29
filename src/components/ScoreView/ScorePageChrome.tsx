@@ -4,6 +4,7 @@ import { TRANSPOSITION_PRESETS } from '../../utils/transposition';
 import { PageInfo as LayoutPage, SystemInfo } from '../../engraver/layout';
 import { Lightbulb } from '../ui/icons';
 import { formatEmbeddedScoreMarker } from '../../omr/scorePayloadCodec';
+import { metronomeLabel } from '../../utils/musicLabels';
 
 export interface ScorePageChromeProps {
   score: Score;
@@ -87,13 +88,14 @@ const ScorePageChromeComponent: React.FC<ScorePageChromeProps> = ({
       <div className="flex justify-between items-end text-xs text-slate-500 mt-3 px-2">
         <div className="text-left font-serif italic">
           {score.lyricist && (
-            <div className="text-slate-700 font-medium">
-              Letra / Arr.: {score.lyricist}
-            </div>
+            <div className="text-slate-700 font-medium">Letra / Arr.: {score.lyricist}</div>
           )}
           <div className="font-mono text-[11px] text-slate-400 mt-0.5">
-            {NOTE_SYMBOL} = {score.tempo} ({score.timeSignature.beats}/
-            {score.timeSignature.beatType}) {SEPARATOR} {effectiveKeySignature}
+            {score.metronomeMark
+              ? metronomeLabel(score.metronomeMark)
+              : `${NOTE_SYMBOL} = ${score.tempo}`}{' '}
+            ({score.timeSignature.beats}/{score.timeSignature.beatType}) {SEPARATOR}{' '}
+            {effectiveKeySignature}
           </div>
         </div>
         <div className="text-right">
@@ -125,7 +127,8 @@ const ScorePageChromeComponent: React.FC<ScorePageChromeProps> = ({
               ) : (
                 <div className="flex items-center justify-between text-xs text-slate-500 pb-3 border-b border-slate-100 mb-6 select-none">
                   <span className="font-serif italic font-bold truncate max-w-[360px] text-slate-800">
-                    {score.title || 'Partitura'} {isPartView && activeStaffName ? `- ${activeStaffName}` : ''}
+                    {score.title || 'Partitura'}{' '}
+                    {isPartView && activeStaffName ? `- ${activeStaffName}` : ''}
                   </span>
                   <span className="font-mono text-[11px] font-bold text-slate-400">
                     - {page.pageNumber} -
@@ -141,7 +144,9 @@ const ScorePageChromeComponent: React.FC<ScorePageChromeProps> = ({
               </div>
 
               <div className="pt-4 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-between select-none">
-                <span>{score.copyright || 'Pautello Engraver - Todos los derechos reservados'}</span>
+                <span>
+                  {score.copyright || 'Pautello Engraver - Todos los derechos reservados'}
+                </span>
                 <span className="font-mono">
                   Pág. {page.pageNumber} / {pages.length}
                 </span>
@@ -165,8 +170,8 @@ const ScorePageChromeComponent: React.FC<ScorePageChromeProps> = ({
           <span>{guideMessage}</span>
         </div>
         <div className="text-[11px] font-mono text-slate-400">
-          Total compases: {totalMeasures} {SEPARATOR} Instrumentos: {score.staves.length} {SEPARATOR}{' '}
-          Vista: {viewLabel}
+          Total compases: {totalMeasures} {SEPARATOR} Instrumentos: {score.staves.length}{' '}
+          {SEPARATOR} Vista: {viewLabel}
         </div>
       </div>
     </>

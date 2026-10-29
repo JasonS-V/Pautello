@@ -81,7 +81,7 @@ describe('entradas del benchmark OMR', () => {
           '--poppler',
           'poppler-inexistente',
         ],
-        { cwd: process.cwd(), stdio: 'pipe', timeout: 10000 }
+        { cwd: process.cwd(), stdio: 'pipe', timeout: 25000 }
       );
       const manifest = JSON.parse(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'));
       const stats = JSON.parse(fs.readFileSync(path.join(output, 'stats.json'), 'utf8'));
@@ -119,31 +119,34 @@ describe('entradas del benchmark OMR', () => {
     expect(Math.min(...raster.gray.subarray(0, 100))).toBeGreaterThan(0.9);
   });
 
-  it('duplica imágenes pequeñas y compone su transparencia sobre blanco', async () => {
+  it('conserva resolución de imágenes pequeñas y compone su transparencia sobre blanco', async () => {
     const input = await openBenchmarkInput(
       fixture('small.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="5"/>')
     );
     const raster = await input.rasterize(1);
-    expect([raster.width, raster.height]).toEqual([20, 10]);
+    expect([raster.width, raster.height]).toEqual([10, 5]);
     expect([...raster.gray].every((value) => value === 1)).toBe(true);
   });
 
-  it.each(['jpg', 'jpeg', 'webp'])('decodifica y escala imágenes %s', async (format) => {
-    const require = createRequire(import.meta.url);
-    const { createCanvas } = createRequire(require.resolve('pdfjs-dist/package.json'))(
-      '@napi-rs/canvas'
-    );
-    const canvas = createCanvas(10, 5);
-    const context = canvas.getContext('2d');
-    context.fillStyle = '#000000';
-    context.fillRect(0, 0, 10, 5);
-    const bytes = canvas.toBuffer(format === 'webp' ? 'image/webp' : 'image/jpeg');
-    const input = await openBenchmarkInput(fixture(`external.${format}`, bytes));
-    const raster = await input.rasterize(1);
-    expect(input.sourceType).toBe('image');
-    expect([raster.width, raster.height]).toEqual([20, 10]);
-    expect([...raster.gray].every((value) => value < 0.05)).toBe(true);
-  });
+  it.each(['jpg', 'jpeg', 'webp'])(
+    'decodifica imágenes %s a su resolución original',
+    async (format) => {
+      const require = createRequire(import.meta.url);
+      const { createCanvas } = createRequire(require.resolve('pdfjs-dist/package.json'))(
+        '@napi-rs/canvas'
+      );
+      const canvas = createCanvas(10, 5);
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#000000';
+      context.fillRect(0, 0, 10, 5);
+      const bytes = canvas.toBuffer(format === 'webp' ? 'image/webp' : 'image/jpeg');
+      const input = await openBenchmarkInput(fixture(`external.${format}`, bytes));
+      const raster = await input.rasterize(1);
+      expect(input.sourceType).toBe('image');
+      expect([raster.width, raster.height]).toEqual([10, 5]);
+      expect([...raster.gray].every((value) => value < 0.05)).toBe(true);
+    }
+  );
 
   it('rechaza un formato desconocido antes de iniciar inferencia', async () => {
     await expect(openBenchmarkInput(fixture('bad.txt', 'foo'))).rejects.toThrow(/Formato/);

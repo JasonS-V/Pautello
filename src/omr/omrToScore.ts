@@ -17,6 +17,11 @@ import { beatsFromTimeSignature, getMeasureTimings } from '../utils/measureTimin
 import { detectKeyFromScore } from '../utils/keyDetection';
 import { normalizeScore } from '../utils/scoreSchema';
 import {
+  applyOmrIndications,
+  planOmrIndications,
+  type OmrIndicationPlan,
+} from './omrIndicationMapping';
+import {
   OmrClefIR,
   OmrDurationIR,
   OmrPitchIR,
@@ -29,6 +34,13 @@ export interface OmrMetadataHints {
   title?: string;
   subtitle?: string;
   composer?: string;
+  arranger?: string;
+  partName?: string;
+  copyright?: string;
+  level?: string;
+  collection?: string;
+  dedication?: string;
+  editorialKey?: string;
   lyricist?: string;
   tempo?: number;
   keySignature?: KeySignature;
@@ -41,6 +53,7 @@ export interface OmrMetadataHints {
 
 export interface OmrConversionSummary {
   score: Score;
+  indicationPlans: OmrIndicationPlan[];
   metadataHints: OmrMetadataHints;
   warnings: OmrWarning[];
   proposals: OmrMeasureProposal[];
@@ -471,7 +484,14 @@ export function convertOmrIrToScore(
 
       const finalItems: ScoreItem[] = items.length
         ? items
-        : [{ id: `omr-empty-rest-${pIdx}-${mIdx}`, type: 'rest', duration: 'w' }];
+        : [
+            {
+              id: `omr-empty-rest-${pIdx}-${mIdx}`,
+              type: 'rest',
+              duration: 'w',
+              omrPlaceholder: true,
+            },
+          ];
       if (!items.length)
         warnings.push({
           code: 'empty-measure-placeholder',
@@ -667,6 +687,9 @@ export function convertOmrIrToScore(
     subtitle: hints.subtitle?.trim() || undefined,
     composer: hints.composer?.trim() || 'Autor Desconocido',
     lyricist: hints.lyricist?.trim() || undefined,
+    arranger: hints.arranger?.trim() || undefined,
+    partName: hints.partName?.trim() || undefined,
+    copyright: hints.copyright?.trim() || undefined,
     tempo: hints.tempo && hints.tempo >= 30 && hints.tempo <= 300 ? hints.tempo : 120,
     timeSignature,
     keySignature: initialKey,
@@ -685,6 +708,18 @@ export function convertOmrIrToScore(
     });
 
   const normalized = normalizeScore(preliminaryScore) ?? preliminaryScore;
+  const indicationPlans = planOmrIndications(ir, normalized);
+  const mapped = applyOmrIndications(normalized, ir, indicationPlans);
+  for (const plan of indicationPlans.filter((entry) => entry.status === 'suggested')) {
+    const indication = ir.indications?.find((entry) => entry.id === plan.id);
+    warnings.push({
+      code: 'indication-anchor-uncertain',
+      severity: 'warning',
+      provenance: 'inferred',
+      src: indication?.src,
+      message: `Indicación ${indication?.text ?? indication?.kind ?? plan.id}: ${plan.reason}`,
+    });
+  }
 
   const rawLinks: OmrSourceLink[] = ir.parts.flatMap((part, sourcePart) =>
     part.measures.flatMap((measure, sourceMeasure) =>
@@ -703,8 +738,8 @@ export function convertOmrIrToScore(
     )
   );
 
-  const sourceLinks = refreshOmrSourceLinks(normalized, rawLinks);
-  const analysis = inspectOmrMeasures(normalized, sourceLinks);
+  const sourceLinks = refreshOmrSourceLinks(mapped, rawLinks);
+  const analysis = inspectOmrMeasures(mapped, sourceLinks);
   warnings.push(...analysis.warnings);
 
   const avgConf =
@@ -713,7 +748,8 @@ export function convertOmrIrToScore(
       : 0;
 
   return {
-    score: normalized,
+    score: mapped,
+    indicationPlans,
     metadataHints: hints,
     warnings,
     proposals: analysis.proposals,

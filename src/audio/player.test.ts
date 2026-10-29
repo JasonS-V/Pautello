@@ -51,6 +51,98 @@ const mock34Score: Score = {
 };
 
 describe('ScorePlayer Playback Scheduler', () => {
+  it('moves the cursor through rests and beat positions on the performed timeline', () => {
+    vi.useFakeTimers();
+    let clock = 0;
+    const currentTime = vi.spyOn(audioEngine, 'getCurrentTime').mockImplementation(() => clock);
+    const player = new ScorePlayer();
+    player.setScore(mock34Score);
+    player.play();
+    clock = 0.55;
+    vi.advanceTimersByTime(25);
+    expect(player.getSnapshot()).toMatchObject({
+      currentMeasureIndex: 0,
+      currentItemIndex: 1,
+      currentBeat: 1,
+    });
+    clock = 1.55;
+    vi.advanceTimersByTime(25);
+    expect(player.getSnapshot()).toMatchObject({
+      currentMeasureIndex: 1,
+      currentItemIndex: 0,
+      currentBeat: 0,
+    });
+    player.stop();
+    currentTime.mockRestore();
+    vi.useRealTimers();
+  });
+  it('schedules repeated visits and local tempo from the shared route', () => {
+    vi.useFakeTimers();
+    let clock = 0;
+    const currentTime = vi.spyOn(audioEngine, 'getCurrentTime').mockImplementation(() => clock);
+    const attacks: { pitch: number; at: number }[] = [];
+    const playMidi = vi
+      .spyOn(audioEngine, 'playMidi')
+      .mockImplementation((pitch, _duration, _velocity, at) => {
+        attacks.push({ pitch, at: at ?? 0 });
+      });
+    const score: Score = {
+      ...mock34Score,
+      staves: [
+        {
+          ...mock34Score.staves[0],
+          measures: [
+            {
+              id: 'a',
+              repeatStart: true,
+              items: [
+                {
+                  id: 'c',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                },
+              ],
+            },
+            {
+              id: 'b',
+              repeatEnd: true,
+              items: [
+                {
+                  id: 'd',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'D', octave: 4, accidental: null },
+                },
+              ],
+            },
+            {
+              id: 'c',
+              tempoBpm: 60,
+              items: [
+                {
+                  id: 'e',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'E', octave: 4, accidental: null },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const player = new ScorePlayer();
+    player.setScore(score);
+    player.play();
+    for (clock of [1.5, 3, 4.5, 6]) vi.advanceTimersByTime(25);
+    expect(attacks.map((a) => a.pitch)).toEqual([60, 62, 60, 62, 64]);
+    expect(attacks.map((a) => a.at)).toEqual([0.05, 1.55, 3.05, 4.55, 6.05]);
+    player.stop();
+    playMidi.mockRestore();
+    currentTime.mockRestore();
+    vi.useRealTimers();
+  });
   it('correctly manages play, pause, and stop transitions', () => {
     const player = new ScorePlayer();
     player.setScore(mock34Score);

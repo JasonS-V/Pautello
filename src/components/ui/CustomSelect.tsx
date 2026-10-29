@@ -20,6 +20,7 @@ interface CustomSelectProps<T extends string | number = string> {
   menuClassName?: string;
   align?: 'left' | 'right';
   disabled?: boolean;
+  ariaLabelledBy?: string;
 }
 
 export function CustomSelect<T extends string | number = string>({
@@ -33,6 +34,7 @@ export function CustomSelect<T extends string | number = string>({
   menuClassName = '',
   align = 'right',
   disabled = false,
+  ariaLabelledBy,
 }: CustomSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,6 +70,7 @@ export function CustomSelect<T extends string | number = string>({
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
         aria-haspopup="listbox"
+        aria-labelledby={ariaLabelledBy}
         aria-expanded={isOpen}
         className={
           buttonClassName ||

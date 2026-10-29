@@ -37,6 +37,9 @@
     "omr:reference": "vite-node scripts/omr-reference.ts",
     "omr:corpus": "vite-node scripts/omr-corpus.ts",
     "omr:evaluate": "vite-node scripts/omr-evaluate.ts",
+    "omr:geometry": "vite-node scripts/omr-geometry-check.ts",
+    "omr:recognition": "vite-node scripts/omr-recognition-check.ts",
+    "omr:compare-engines": "vite-node scripts/omr-compare-engines.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -57,7 +60,8 @@
     "onnxruntime-web": "^1.30.0",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,18 +1,33 @@
 import { useRef, useState } from 'react';
 import type { OmrResult } from '../../omr/omrEngine';
+import type { OmrSourceSpan } from '../../omr/omrDecode';
 import { ModalBase } from '../ui/ModalBase';
 import { ModalHeader } from '../ui/ModalChrome';
 
-export function OmrReviewPanel({ result }: { result: OmrResult }) {
+export function OmrReviewPanel({
+  result,
+  focusSource,
+  reviewedWarningIds = [],
+  onToggleReviewed,
+  onSelectWarning,
+}: {
+  result: OmrResult;
+  focusSource?: OmrSourceSpan;
+  reviewedWarningIds?: string[];
+  onToggleReviewed?: (id: string) => void;
+  onSelectWarning?: (index: number) => void;
+}) {
   const [activeWarning, setActiveWarning] = useState(0);
   const [wholePage, setWholePage] = useState(false);
+  const [showRegions, setShowRegions] = useState(false);
   const previewRef = useRef<SVGSVGElement>(null);
   const warning = result.warnings[activeWarning];
+  const activeSource = focusSource ?? warning?.src;
   const page =
-    result.sourcePages?.find((p) => p.pageNumber === (warning?.src?.page ?? warning?.page)) ??
+    result.sourcePages?.find((p) => p.pageNumber === (activeSource?.page ?? warning?.page)) ??
     result.sourcePages?.[0];
-  const region = warning?.src?.bbox;
-  const regionIsOnPage = warning?.src?.page === page?.pageNumber;
+  const region = activeSource?.bbox;
+  const regionIsOnPage = activeSource?.page === page?.pageNumber;
   const contextWidth =
     page && region ? Math.min(page.width, Math.max(region[2] + 100, page.width * 0.3)) : 1;
   const contextHeight = page && region ? Math.min(page.height, region[3] + 60) : 1;
@@ -28,6 +43,32 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
           <summary className="cursor-pointer font-semibold">
             Revisar {result.warnings.length} aviso(s) de lectura
           </summary>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={activeWarning === 0}
+              className="underline disabled:opacity-50"
+              onClick={() => {
+                const next = activeWarning - 1;
+                setActiveWarning(next);
+                onSelectWarning?.(next);
+              }}
+            >
+              Aviso anterior
+            </button>
+            <button
+              type="button"
+              disabled={activeWarning >= result.warnings.length - 1}
+              className="underline disabled:opacity-50"
+              onClick={() => {
+                const next = activeWarning + 1;
+                setActiveWarning(next);
+                onSelectWarning?.(next);
+              }}
+            >
+              Aviso siguiente
+            </button>
+          </div>
           <ul
             className="mt-2 max-h-48 overflow-y-auto space-y-2"
             aria-label="Avisos de lectura OMR"
@@ -38,6 +79,7 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
                 className="border-t border-amber-200 dark:border-amber-900/60 pt-2"
               >
                 <span className="font-semibold">
+                  {index === activeWarning ? 'Seleccionado — ' : ''}
                   Página {entry.page ?? entry.src?.page ?? '?'}
                   {(entry.system ?? entry.src?.system) !== undefined
                     ? `, sistema ${(entry.system ?? entry.src!.system) + 1}`
@@ -48,6 +90,18 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
                   :
                 </span>{' '}
                 {entry.message}
+                {onToggleReviewed && (
+                  <label className="ml-2 inline-flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={reviewedWarningIds.includes(`${entry.code}-${index}`)}
+                      onChange={() => onToggleReviewed(`${entry.code}-${index}`)}
+                    />
+                    {reviewedWarningIds.includes(`${entry.code}-${index}`)
+                      ? 'Revisado por persona'
+                      : 'Pendiente'}
+                  </label>
+                )}
                 {entry.src && (
                   <>
                     <span className="block text-[11px] opacity-80">
@@ -61,6 +115,7 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
                         onClick={() => {
                           setActiveWarning(index);
                           setWholePage(false);
+                          onSelectWarning?.(index);
                           previewRef.current?.focus();
                         }}
                       >
@@ -74,10 +129,35 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
           </ul>
         </details>
       )}
+      {Boolean(result.editorial?.unclassified.length) && (
+        <details className="rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5">
+          <summary className="cursor-pointer font-semibold">Otro texto de la fuente</summary>
+          <ul className="mt-2 max-h-36 overflow-y-auto space-y-1">
+            {result.editorial?.unclassified
+              .filter((line) => line.text.length >= 3 && !/^\d+$/.test(line.text))
+              .map((line) => (
+                <li key={line.id}>
+                  Página {line.page}, x={Math.round(line.bbox[0])}, y={Math.round(line.bbox[1])}:{' '}
+                  {line.text}
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
       {page && (
         <figure className="space-y-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3">
           <figcaption className="flex flex-wrap items-center justify-between gap-2">
             <span>Fuente, página {page.pageNumber}. Ubicación aproximada del registro.</span>
+            {result.pageDiagnostics?.length ? (
+              <button
+                type="button"
+                className="underline font-semibold"
+                aria-pressed={showRegions}
+                onClick={() => setShowRegions(!showRegions)}
+              >
+                {showRegions ? 'Ocultar regiones conservadas' : 'Ver regiones conservadas'}
+              </button>
+            ) : null}
             {region && regionIsOnPage && (
               <button
                 type="button"
@@ -100,8 +180,34 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
               href={page.imageUrl}
               width={page.width}
               height={page.height}
-              transform={`rotate(${-page.deskewAngleDeg} ${page.width / 2} ${page.height / 2})`}
+              transform={
+                page.coordinates === 'original'
+                  ? undefined
+                  : `rotate(${-page.deskewAngleDeg} ${page.width / 2} ${page.height / 2})`
+              }
             />
+            {showRegions &&
+              result.pageDiagnostics
+                ?.find((p) => p.pageNumber === page.pageNumber)
+                ?.regions.map((entry) => (
+                  <rect
+                    key={entry.id}
+                    x={entry.bbox[0]}
+                    y={entry.bbox[1]}
+                    width={entry.bbox[2]}
+                    height={entry.bbox[3]}
+                    fill="none"
+                    stroke={entry.route === 'review' ? '#b45309' : '#2563eb'}
+                    strokeWidth="1"
+                    vectorEffect="non-scaling-stroke"
+                  >
+                    <title>
+                      {entry.route === 'review'
+                        ? 'Indicación o símbolo pendiente'
+                        : 'Región musical completa'}
+                    </title>
+                  </rect>
+                ))}
             {region && regionIsOnPage && (
               <rect
                 x={region[0]}
@@ -125,11 +231,37 @@ export function OmrReviewPanel({ result }: { result: OmrResult }) {
             ` Además, ${result.report.unparseableRecords} registros ilegibles por revisar.`}
         </p>
       )}
+      {result.pageDiagnostics?.some((page) =>
+        page.regions.some((region) => region.route === 'review')
+      ) && (
+        <p>
+          {result.pageDiagnostics.reduce(
+            (total, page) =>
+              total + page.regions.filter((region) => region.route === 'review').length,
+            0
+          )}{' '}
+          región(es) de la fuente pendiente(s) de revisar.
+        </p>
+      )}
       {Boolean(result.acceptedProposals?.length) && (
         <p>
           {result.acceptedProposals!.length} propuesta(s) aceptada(s); se conserva el borrador
           reconocido.
         </p>
+      )}
+      {result.reviewStatus && (
+        <p>
+          Estado:{' '}
+          {result.reviewStatus === 'reviewed'
+            ? 'revisado por persona'
+            : result.reviewStatus === 'automatic'
+              ? 'lectura automática'
+              : 'importado con pendientes'}
+          . {result.reviewedMeasureIds?.length ?? 0} compás(es) verificados por persona.
+        </p>
+      )}
+      {Boolean(result.acceptedIndicationIds?.length) && (
+        <p>{result.acceptedIndicationIds!.length} indicación(es) asignadas por persona.</p>
       )}
     </section>
   );
@@ -140,7 +272,7 @@ export function OmrReviewModal({ result, onClose }: { result: OmrResult; onClose
     <ModalBase isOpen onClose={onClose} ariaLabel="Revisar lectura OMR" maxWidth="max-w-3xl">
       <ModalHeader
         title="Revisar lectura OMR"
-        subtitle="La fuente y los avisos se conservan durante esta sesión de la aplicación."
+        subtitle="La fuente, las decisiones y los avisos se conservan en el borrador local."
         onClose={onClose}
       />
       <OmrReviewPanel result={result} />

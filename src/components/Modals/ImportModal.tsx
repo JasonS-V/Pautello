@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   CheckCircle2,
@@ -10,12 +10,15 @@ import {
   Layers,
 } from '../ui/icons';
 import { OmrReviewPanel } from './OmrReviewPanel';
+import { OmrDraftEditor } from './OmrDraftEditor';
+import { applyOmrIndications, linkOmrNavigationTargets } from '../../omr/omrIndicationMapping';
+import { loadOmrDraft, saveOmrDraft, type OmrDraft } from '../../omr/omrDraftPersistence';
 import {
   applyOmrMeasureProposals,
   inspectOmrMeasures,
   refreshOmrSourceLinks,
 } from '../../omr/omrToScore';
-import { Score, KeySignature } from '../../types/music';
+import { Score, KeySignature, ScoreItem } from '../../types/music';
 import { importMusicXmlToScore } from '../../utils/musicxml';
 import { parseMidiToScore } from '../../utils/midiParser';
 import {
@@ -30,6 +33,7 @@ import { ModalBase } from '../ui/ModalBase';
 import { ModalHeader, ModalFooter } from '../ui/ModalChrome';
 import { modalButton } from '../ui/modalButton';
 import { useToast } from '../ui/toastContext';
+import { getOmrOfflineStatus, prepareOmrOffline } from '../../pwa/omrOffline';
 import { normalizeScore } from '../../utils/scoreSchema';
 import { recognizeScoreFromFile, OmrProgress, OmrResult } from '../../omr/omrEngine';
 
@@ -44,9 +48,24 @@ const MAX_IMPORT_BYTES = 16 * 1024 * 1024;
 const QUARTER_NOTE_GLYPH = '\u2669';
 const DOT_SEPARATOR = '\u2022';
 
+interface DraftSnapshot {
+  score: Score;
+  selectedKey: KeySignature;
+  selectedTempo: number;
+  selectedTimeSignature: { beats: number; beatType: number };
+  acceptedProposals: string[];
+  acceptedIndications: string[];
+  rejectedIndications: string[];
+  reviewedWarningIds: string[];
+  reviewedMeasureIds: string[];
+  manualEditMeasureIds: string[];
+}
+
 export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImportScore }) => {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const omrAbort = useRef<AbortController | null>(null);
+  const importRun = useRef(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [parsedScore, setParsedScore] = useState<Score | null>(null);
   const [detectedKey, setDetectedKey] = useState<KeySignature>('C');
@@ -65,8 +84,26 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
   const [isRunningOmr, setIsRunningOmr] = useState<boolean>(false);
   const [omrProgress, setOmrProgress] = useState<OmrProgress | null>(null);
   const [omrSummary, setOmrSummary] = useState<OmrResult | null>(null);
+  const [pdfPageRange, setPdfPageRange] = useState('');
+  const [rotation, setRotation] = useState('auto');
+  const [offlineState, setOfflineState] = useState<
+    'unavailable' | 'checking' | 'missing' | 'preparing' | 'ready'
+  >('unavailable');
+  const [offlineProgress, setOfflineProgress] = useState('');
 
   const [acceptedProposals, setAcceptedProposals] = useState<string[]>([]);
+  const [acceptedIndications, setAcceptedIndications] = useState<string[]>([]);
+  const [rejectedIndications, setRejectedIndications] = useState<string[]>([]);
+  const [indicationTargets, setIndicationTargets] = useState<Record<string, string>>({});
+  const [reviewedWarningIds, setReviewedWarningIds] = useState<string[]>([]);
+  const [reviewedMeasureIds, setReviewedMeasureIds] = useState<string[]>([]);
+  const [manualEditMeasureIds, setManualEditMeasureIds] = useState<string[]>([]);
+  const [availableDraft, setAvailableDraft] = useState<OmrDraft | null>(null);
+  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle'
+  );
+  const draftPast = useRef<DraftSnapshot[]>([]);
+  const draftFuture = useRef<DraftSnapshot[]>([]);
   const neuralResult = omrSummary?.sourceType === 'neural-onnx';
   const measureAnalysis =
     parsedScore && neuralResult ? inspectOmrMeasures(parsedScore, omrSummary.sourceLinks) : null;
@@ -78,9 +115,23 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     omrSummary && previewScore
       ? {
           ...omrSummary,
+          score: previewScore,
+          report:
+            omrSummary.report && neuralResult
+              ? {
+                  ...omrSummary.report,
+                  representedEvents: refreshOmrSourceLinks(
+                    previewScore,
+                    omrSummary.sourceLinks
+                  ).filter((link) => link.measureId).length,
+                  pendingEvents: refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks).filter(
+                    (link) => !link.measureId
+                  ).length,
+                }
+              : omrSummary.report,
           warnings: [
             ...omrSummary.warnings.filter(
-              (w) => !['measure-overfull', 'measure-underfull'].includes(w.code)
+              (w) => !['measure-overfull', 'measure-underfull', 'unmapped-event'].includes(w.code)
             ),
             ...(neuralResult
               ? inspectOmrMeasures(
@@ -88,16 +139,109 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks)
                 ).warnings
               : []),
+            ...(neuralResult
+              ? refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks)
+                  .filter((link) => !link.measureId)
+                  .map((link) => ({
+                    code: 'unmapped-event',
+                    severity: 'error' as const,
+                    provenance: 'modified' as const,
+                    src: link.src,
+                    page: link.src?.page,
+                    system: link.src?.system,
+                    staff: link.src?.staff,
+                    message: `El evento leído en la parte ${link.sourcePart + 1}, compás ${link.sourceMeasure + 1} no aparece en el borrador editable.`,
+                  }))
+              : []),
           ],
         }
       : null;
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    loadOmrDraft()
+      .then((draft) => {
+        if (!cancelled) setAvailableDraft(draft);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || window.location.protocol === 'file:' || !import.meta.env.PROD) return;
+    let active = true;
+    setOfflineState('checking');
+    getOmrOfflineStatus()
+      .then((status) => {
+        if (active) setOfflineState(status.ready ? 'ready' : 'missing');
+      })
+      .catch(() => {
+        if (active) setOfflineState('missing');
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !parsedScore || omrSummary?.sourceType !== 'neural-onnx') return;
+    setDraftSaveState('saving');
+    const timer = setTimeout(() => {
+      const draft: OmrDraft = {
+        version: 1,
+        savedAt: Date.now(),
+        score: parsedScore,
+        result: omrSummary,
+        acceptedMeasureIds: acceptedProposals,
+        acceptedIndicationIds: acceptedIndications,
+        rejectedIndicationIds: rejectedIndications,
+        reviewedWarningIds,
+        reviewedMeasureIds,
+        manualEditMeasureIds,
+      };
+      saveOmrDraft(draft)
+        .then(() => {
+          setAvailableDraft(draft);
+          setDraftSaveState('saved');
+        })
+        .catch((error) => {
+          setDraftSaveState('error');
+          setErrorMessage(
+            error instanceof Error ? error.message : 'No se pudo guardar el borrador.'
+          );
+        });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [
+    isOpen,
+    parsedScore,
+    omrSummary,
+    acceptedProposals,
+    acceptedIndications,
+    rejectedIndications,
+    reviewedWarningIds,
+    reviewedMeasureIds,
+    manualEditMeasureIds,
+  ]);
+
   if (!isOpen) return null;
 
   const handleProcessFile = async (file: File) => {
+    const run = ++importRun.current;
     setErrorMessage(null);
     setOmrSummary(null);
     setAcceptedProposals([]);
+    setAcceptedIndications([]);
+    setRejectedIndications([]);
+    setIndicationTargets({});
+    setReviewedWarningIds([]);
+    setReviewedMeasureIds([]);
+    setManualEditMeasureIds([]);
+    draftPast.current = [];
+    draftFuture.current = [];
 
     if (file.size > MAX_IMPORT_BYTES) {
       toast.warning(
@@ -113,6 +257,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       let score: Score;
 
       if (OMR_EXTENSIONS.has(extension)) {
+        const controller = new AbortController();
+        omrAbort.current = controller;
         setIsRunningOmr(true);
         setOmrProgress({
           stage: 'loading-file',
@@ -121,14 +267,26 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         });
 
         try {
-          const omrResult = await recognizeScoreFromFile(file, (prog) => {
-            setOmrProgress(prog);
-          });
+          const omrResult = await recognizeScoreFromFile(
+            file,
+            (prog) => {
+              if (run === importRun.current) setOmrProgress(prog);
+            },
+            {
+              pdfPageRange,
+              ...(rotation === 'auto' ? {} : { rotation: Number(rotation) as 0 | 90 | 180 | 270 }),
+              signal: controller.signal,
+            }
+          );
+          if (controller.signal.aborted || run !== importRun.current) return;
           score = omrResult.score;
           setOmrSummary(omrResult);
         } finally {
-          setIsRunningOmr(false);
-          setOmrProgress(null);
+          if (omrAbort.current === controller) omrAbort.current = null;
+          if (run === importRun.current) {
+            setIsRunningOmr(false);
+            setOmrProgress(null);
+          }
         }
       } else if (extension === 'json') {
         const text = await file.text();
@@ -162,10 +320,13 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
         `"${normalized.title || file.name}" se ha cargado para revisión.`
       );
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (run !== importRun.current) return;
       console.error(err);
       const msg = err instanceof Error ? err.message : 'Error al procesar el archivo.';
       setErrorMessage(msg);
       setParsedScore(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       toast.error('Error de importación', msg);
     }
   };
@@ -175,7 +336,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     setSelectedTimeSignature(newTs);
     setAcceptedProposals([]);
     if (!parsedScore) return;
-    setParsedScore({
+    editDraft({
       ...parsedScore,
       timeSignature: newTs,
     });
@@ -185,8 +346,194 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     const valid = Math.max(30, Math.min(300, rawVal || 120));
     setSelectedTempo(valid);
     if (parsedScore) {
-      setParsedScore({ ...parsedScore, tempo: valid });
+      editDraft({ ...parsedScore, tempo: valid });
     }
+  };
+
+  const handleEditorialChange = (
+    field: 'title' | 'composer' | 'arranger' | 'partName',
+    value: string
+  ) => {
+    if (parsedScore) editDraft({ ...parsedScore, [field]: value });
+    setOmrSummary((result) =>
+      result ? { ...result, metadataHints: { ...result.metadataHints, [field]: value } } : result
+    );
+  };
+
+  const captureDraft = (): DraftSnapshot | null =>
+    parsedScore
+      ? {
+          score: structuredClone(parsedScore),
+          selectedKey,
+          selectedTempo,
+          selectedTimeSignature: { ...selectedTimeSignature },
+          acceptedProposals: [...acceptedProposals],
+          acceptedIndications: [...acceptedIndications],
+          rejectedIndications: [...rejectedIndications],
+          reviewedWarningIds: [...reviewedWarningIds],
+          reviewedMeasureIds: [...reviewedMeasureIds],
+          manualEditMeasureIds: [...manualEditMeasureIds],
+        }
+      : null;
+  const pushDraft = () => {
+    const snapshot = captureDraft();
+    if (!snapshot) return;
+    draftPast.current.push(snapshot);
+    if (draftPast.current.length > 50) draftPast.current.shift();
+    draftFuture.current = [];
+  };
+  const restoreDraft = (snapshot: DraftSnapshot) => {
+    setParsedScore(snapshot.score);
+    setSelectedKey(snapshot.selectedKey);
+    setSelectedTempo(snapshot.selectedTempo);
+    setSelectedTimeSignature(snapshot.selectedTimeSignature);
+    setAcceptedProposals(snapshot.acceptedProposals);
+    setAcceptedIndications(snapshot.acceptedIndications);
+    setRejectedIndications(snapshot.rejectedIndications);
+    setReviewedWarningIds(snapshot.reviewedWarningIds);
+    setReviewedMeasureIds(snapshot.reviewedMeasureIds);
+    setManualEditMeasureIds(snapshot.manualEditMeasureIds);
+  };
+  const editDraft = (next: Score, measureId?: string) => {
+    if (!parsedScore) return;
+    pushDraft();
+    setParsedScore(next);
+    setSelectedTempo(next.tempo);
+    setSelectedTimeSignature(next.timeSignature);
+    if (measureId) {
+      setManualEditMeasureIds((ids) => (ids.includes(measureId) ? ids : [...ids, measureId]));
+      setReviewedMeasureIds((ids) => ids.filter((id) => id !== measureId));
+    }
+  };
+  const undoDraft = () => {
+    const previous = draftPast.current.pop();
+    if (!previous || !parsedScore) return;
+    const current = captureDraft();
+    if (current) draftFuture.current.push(current);
+    restoreDraft(previous);
+  };
+  const redoDraft = () => {
+    const next = draftFuture.current.pop();
+    if (!next || !parsedScore) return;
+    const current = captureDraft();
+    if (current) draftPast.current.push(current);
+    restoreDraft(next);
+  };
+  const saveDraft = async (score: Score = parsedScore!, result: OmrResult = omrSummary!) => {
+    if (!score || result?.sourceType !== 'neural-onnx') return;
+    const draft: OmrDraft = {
+      version: 1,
+      savedAt: Date.now(),
+      score,
+      result,
+      acceptedMeasureIds: acceptedProposals,
+      acceptedIndicationIds: acceptedIndications,
+      rejectedIndicationIds: rejectedIndications,
+      reviewedWarningIds,
+      reviewedMeasureIds,
+      manualEditMeasureIds,
+    };
+    await saveOmrDraft(draft);
+    setAvailableDraft(draft);
+    setDraftSaveState('saved');
+  };
+  const resumeDraft = () => {
+    if (!availableDraft) return;
+    const draft = availableDraft;
+    setParsedScore(draft.score);
+    setOmrSummary(draft.result);
+    setAcceptedProposals(draft.acceptedMeasureIds);
+    setAcceptedIndications(draft.acceptedIndicationIds);
+    setRejectedIndications(draft.rejectedIndicationIds);
+    setReviewedWarningIds(draft.reviewedWarningIds);
+    setReviewedMeasureIds(draft.reviewedMeasureIds);
+    setManualEditMeasureIds(draft.manualEditMeasureIds);
+    setSelectedKey(draft.score.keySignature);
+    setSelectedTimeSignature(draft.score.timeSignature);
+    setSelectedTempo(draft.score.tempo);
+    draftPast.current = [];
+    draftFuture.current = [];
+  };
+  const rerecognizeMeasure = async (staffId: string, measureId: string): Promise<ScoreItem[]> => {
+    if (!omrSummary) throw new Error('La fuente original no está disponible.');
+    const boxes = omrSummary.sourceLinks
+      .filter((link) => link.staffId === staffId && link.measureId === measureId && link.src)
+      .map((link) => link.src!);
+    if (!boxes.length) throw new Error('Este compás no tiene una región de origen fiable.');
+    const page = omrSummary.sourcePages?.find((entry) => entry.pageNumber === boxes[0].page);
+    if (!page) throw new Error('La imagen de origen no está disponible.');
+    const image = new Image();
+    image.src = page.imageUrl;
+    await image.decode();
+    const left = Math.max(0, Math.floor(Math.min(...boxes.map((box) => box.bbox[0])) - 60));
+    const top = Math.max(0, Math.floor(Math.min(...boxes.map((box) => box.bbox[1])) - 80));
+    const right = Math.min(
+      page.width,
+      Math.ceil(Math.max(...boxes.map((box) => box.bbox[0] + box.bbox[2])) + 60)
+    );
+    const bottom = Math.min(
+      page.height,
+      Math.ceil(Math.max(...boxes.map((box) => box.bbox[1] + box.bbox[3])) + 80)
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = right - left;
+    canvas.height = bottom - top;
+    canvas
+      .getContext('2d')!
+      .drawImage(image, left, top, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (value) => (value ? resolve(value) : reject(new Error('No se pudo recortar la fuente.'))),
+        'image/png'
+      )
+    );
+    const reread = await recognizeScoreFromFile(
+      new File([blob], 'region.png', { type: 'image/png' })
+    );
+    const items = reread.score.staves[0]?.measures[0]?.items;
+    if (!items?.length || items.every((item) => item.omrPlaceholder))
+      throw new Error('La región no produjo eventos editables.');
+    return items.map((item) => ({ ...item, id: `omr-region-${crypto.randomUUID()}` }));
+  };
+  const acceptIndication = (id: string) => {
+    if (!parsedScore || !omrSummary?.ir || !omrSummary.indicationPlans) return;
+    const plan = omrSummary.indicationPlans.find((entry) => entry.id === id);
+    if (!plan) return;
+    const targetMeasureId = indicationTargets[id] ?? plan.measureId;
+    const targetStaff = parsedScore.staves.find((staff) =>
+      staff.measures.some((measure) => measure.id === targetMeasureId)
+    );
+    if (!targetStaff || !targetMeasureId) return;
+    const resolvedPlans = omrSummary.indicationPlans.map((entry) =>
+      entry.id === id
+        ? {
+            ...entry,
+            staffId: targetStaff.id,
+            measureId: targetMeasureId,
+            status: 'suggested' as const,
+          }
+        : entry
+    );
+    const mapped = applyOmrIndications(
+      parsedScore,
+      omrSummary.ir,
+      resolvedPlans.filter((entry) => entry.id === id),
+      [id]
+    );
+    linkOmrNavigationTargets(mapped, omrSummary.ir, resolvedPlans, [...acceptedIndications, id]);
+    if (JSON.stringify(mapped) === JSON.stringify(parsedScore)) {
+      setErrorMessage(
+        'La indicación no tiene una asignación editable inequívoca. Revisa la fuente y corrígela manualmente.'
+      );
+      return;
+    }
+    setErrorMessage(null);
+    editDraft(mapped, targetMeasureId);
+    setOmrSummary((current) =>
+      current ? { ...current, indicationPlans: resolvedPlans } : current
+    );
+    setAcceptedIndications((ids) => [...ids, id]);
+    setRejectedIndications((ids) => ids.filter((entry) => entry !== id));
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -202,7 +549,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     if (file) void handleProcessFile(file);
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!parsedScore) return;
 
     let finalScore = previewScore ?? parsedScore;
@@ -219,27 +566,59 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       finalScore = { ...finalScore, tempo: selectedTempo };
     }
 
-    onImportScore(
-      finalScore,
+    const session =
       reviewResult?.sourceType === 'neural-onnx'
         ? {
             ...reviewResult,
             score: finalScore,
             sourceLinks: refreshOmrSourceLinks(finalScore, reviewResult.sourceLinks),
             recognizedScore: omrSummary?.score,
+            reviewedWarningIds,
+            reviewedMeasureIds,
+            manualEditMeasureIds,
+            acceptedIndicationIds: acceptedIndications,
+            rejectedIndicationIds: rejectedIndications,
+            reviewStatus: (reviewedMeasureIds.length >=
+              finalScore.staves.reduce((n, st) => n + st.measures.length, 0) &&
+            reviewedWarningIds.length >= reviewResult.warnings.length &&
+            !reviewResult.report?.pendingEvents &&
+            !rejectedIndications.length &&
+            reviewResult.indicationPlans?.every(
+              (plan) => plan.status === 'exact' || acceptedIndications.includes(plan.id)
+            )
+              ? 'reviewed'
+              : 'confirmed-with-pending') as OmrResult['reviewStatus'],
             acceptedProposals: measureAnalysis?.proposals.filter((proposal) =>
               acceptedProposals.includes(proposal.measureId)
             ),
           }
-        : undefined
-    );
+        : undefined;
+    if (session) {
+      try {
+        await saveDraft(finalScore, session);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el borrador.');
+        return;
+      }
+    }
+    onImportScore(finalScore, session);
     toast.success('Partitura importada', 'La partitura se ha cargado en el editor.');
-    handleClose();
+    handleReset();
+    onClose();
   };
 
   const handleReset = () => {
+    omrAbort.current?.abort();
+    omrAbort.current = null;
+    importRun.current++;
     setParsedScore(null);
     setAcceptedProposals([]);
+    setAcceptedIndications([]);
+    setRejectedIndications([]);
+    setIndicationTargets({});
+    setReviewedWarningIds([]);
+    setReviewedMeasureIds([]);
+    setManualEditMeasureIds([]);
     setErrorMessage(null);
     setIsRunningOmr(false);
     setOmrProgress(null);
@@ -247,10 +626,37 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleClose = () => {
-    if (isRunningOmr) return;
+  const handleClose = async () => {
+    if (isRunningOmr) {
+      handleReset();
+      onClose();
+      return;
+    }
+    if (parsedScore && omrSummary?.sourceType === 'neural-onnx') {
+      try {
+        await saveDraft();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el borrador.');
+        return;
+      }
+    }
     handleReset();
     onClose();
+  };
+  const handleChooseOther = async () => {
+    if (isRunningOmr) {
+      handleReset();
+      return;
+    }
+    if (parsedScore && omrSummary?.sourceType === 'neural-onnx') {
+      try {
+        await saveDraft();
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el borrador.');
+        return;
+      }
+    }
+    handleReset();
   };
 
   const detectedKeyName = KEY_SIGNATURE_DATA[detectedKey]?.name || detectedKey;
@@ -271,7 +677,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       isOpen={isOpen}
       onClose={handleClose}
       ariaLabel="Importar partitura"
-      maxWidth="max-w-xl"
+      maxWidth={parsedScore && neuralResult ? 'max-w-6xl' : 'max-w-xl'}
     >
       <ModalHeader
         icon={<Upload className="w-4 h-4" />}
@@ -295,6 +701,82 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
       {/* State 1: Dropzone or OMR Progress */}
       {!parsedScore ? (
         <div className="space-y-4">
+          {!isRunningOmr && (
+            <>
+              {offlineState !== 'unavailable' && (
+                <div className="rounded-lg border border-slate-300 dark:border-studio-line p-3 text-xs text-slate-700 dark:text-slate-300">
+                  {offlineState === 'ready' ? (
+                    <span>OMR preparado para usar sin conexión.</span>
+                  ) : offlineState === 'checking' ? (
+                    <span>Comprobando recursos OMR locales…</span>
+                  ) : offlineState === 'preparing' ? (
+                    <span role="status">Preparando recursos OMR {offlineProgress}…</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className={modalButton.secondary}
+                      onClick={() => {
+                        setOfflineState('preparing');
+                        void prepareOmrOffline((status) => {
+                          if (status.completed)
+                            setOfflineProgress(`${status.completed}/${status.total}`);
+                        })
+                          .then((status) => setOfflineState(status.ready ? 'ready' : 'missing'))
+                          .catch((error) => {
+                            setOfflineState('missing');
+                            toast.error(
+                              'Preparación OMR',
+                              error instanceof Error
+                                ? error.message
+                                : 'No se pudieron guardar los recursos.'
+                            );
+                          });
+                      }}
+                    >
+                      Preparar OMR sin conexión
+                    </button>
+                  )}
+                </div>
+              )}
+              {availableDraft && (
+                <button
+                  type="button"
+                  onClick={resumeDraft}
+                  className="w-full rounded-lg border border-amber-500 p-2 text-left text-xs font-semibold"
+                >
+                  Continuar borrador OMR guardado: {availableDraft.score.title}
+                </button>
+              )}
+              <label className="block text-xs text-slate-600 dark:text-slate-300">
+                Páginas del PDF (opcional; máximo 20 por importación)
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={pdfPageRange}
+                  onChange={(event) => setPdfPageRange(event.target.value)}
+                  placeholder="Todas, o por ejemplo 1,3-5"
+                  className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-elevated px-3 py-2"
+                />
+              </label>
+              <div className="text-xs text-slate-600 dark:text-slate-300">
+                <span id="omr-orientation-label" className="mb-1 block">
+                  Orientación de la imagen o PDF
+                </span>
+                <CustomSelect
+                  value={rotation}
+                  onChange={setRotation}
+                  ariaLabelledBy="omr-orientation-label"
+                  options={[
+                    { value: 'auto', label: 'Automática (revisar sentido de lectura)' },
+                    { value: '0', label: 'Sin giro (0°)' },
+                    { value: '90', label: 'Girar 90° a la derecha' },
+                    { value: '180', label: 'Girar 180°' },
+                    { value: '270', label: 'Girar 90° a la izquierda' },
+                  ]}
+                />
+              </div>
+            </>
+          )}
           {isRunningOmr && omrProgress ? (
             <div
               role="status"
@@ -335,6 +817,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   </span>
                 ) : null}
               </div>
+              <button type="button" className={modalButton.secondary} onClick={handleReset}>
+                Cancelar importación
+              </button>
             </div>
           ) : (
             <div
@@ -405,7 +890,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                     <span className="font-mono text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                       {omrSummary.sourceType === 'lossless-metadata'
                         ? 'Restauración nativa'
-                        : `OMR ONNX ${DOT_SEPARATOR} ${omrSummary.confidence}% confianza del reconocimiento ${DOT_SEPARATOR} ${omrSummary.stavesDetected} pauta(s)`}
+                        : `OMR ONNX ${DOT_SEPARATOR} ${omrSummary.confidence}% confianza del reconocimiento ${DOT_SEPARATOR} ${omrSummary.stavesDetected} pauta(s), ${omrSummary.systemsDetected ?? '?'} sistema(s), ${omrSummary.partsDetected ?? parsedScore.staves.length} parte(s)`}
                     </span>
                   )}
                 </div>
@@ -419,7 +904,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             </div>
             <button
               type="button"
-              onClick={handleReset}
+              onClick={() => void handleChooseOther()}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-studio-hover transition-colors cursor-pointer shrink-0"
               title="Cambiar archivo"
               aria-label="Cambiar archivo"
@@ -428,7 +913,177 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             </button>
           </div>
 
-          {reviewResult && <OmrReviewPanel result={reviewResult} />}
+          {reviewResult && neuralResult && previewScore && (
+            <>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={undoDraft}
+                  disabled={!draftPast.current.length}
+                  className="rounded border px-2 py-1 disabled:opacity-50"
+                >
+                  Deshacer corrección
+                </button>
+                <button
+                  type="button"
+                  onClick={redoDraft}
+                  disabled={!draftFuture.current.length}
+                  className="rounded border px-2 py-1 disabled:opacity-50"
+                >
+                  Rehacer corrección
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveDraft().catch((error) => {
+                      setDraftSaveState('error');
+                      setErrorMessage(
+                        error instanceof Error ? error.message : 'No se pudo guardar.'
+                      );
+                    })
+                  }
+                  className="rounded border px-2 py-1"
+                >
+                  Guardar borrador
+                </button>
+                <span role="status">
+                  {draftSaveState === 'saving'
+                    ? 'Guardando borrador…'
+                    : draftSaveState === 'saved'
+                      ? 'Borrador guardado'
+                      : draftSaveState === 'error'
+                        ? 'Error al guardar'
+                        : 'Borrador sin guardar'}
+                </span>
+              </div>
+              {errorMessage && (
+                <p role="alert" className="text-xs text-red-700">
+                  {errorMessage}
+                </p>
+              )}
+              <OmrDraftEditor
+                score={previewScore}
+                result={reviewResult}
+                onEdit={editDraft}
+                onRerecognize={rerecognizeMeasure}
+                reviewedWarningIds={reviewedWarningIds}
+                onToggleReviewed={(id) => {
+                  pushDraft();
+                  setReviewedWarningIds((ids) =>
+                    ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id]
+                  );
+                }}
+                reviewedMeasureIds={reviewedMeasureIds}
+                onToggleMeasureReviewed={(id) => {
+                  pushDraft();
+                  setReviewedMeasureIds((ids) =>
+                    ids.includes(id) ? ids.filter((entry) => entry !== id) : [...ids, id]
+                  );
+                }}
+              />
+            </>
+          )}
+          {reviewResult && !neuralResult && <OmrReviewPanel result={reviewResult} />}
+          {neuralResult && omrSummary?.indicationPlans?.some((plan) => plan.status !== 'exact') && (
+            <fieldset className="space-y-2 rounded-xl border p-3 text-xs">
+              <legend className="font-semibold">Indicaciones por asignar o revisar</legend>
+              {omrSummary.indicationPlans
+                .filter((plan) => plan.status !== 'exact')
+                .map((plan) => {
+                  const indication = omrSummary.indications?.find((entry) => entry.id === plan.id);
+                  const decision = acceptedIndications.includes(plan.id)
+                    ? 'Aceptada'
+                    : rejectedIndications.includes(plan.id)
+                      ? 'Descartada'
+                      : 'Pendiente';
+                  return (
+                    <div key={plan.id} className="rounded border p-2 space-y-1">
+                      <p>
+                        {indication?.text ?? indication?.kind ?? plan.id} — {plan.reason}{' '}
+                        <strong>{decision}</strong>
+                      </p>
+                      {decision === 'Pendiente' && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            aria-label={`Compás de ${indication?.text ?? indication?.kind ?? plan.id}`}
+                            value={indicationTargets[plan.id] ?? plan.measureId ?? ''}
+                            onChange={(e) =>
+                              setIndicationTargets((current) => ({
+                                ...current,
+                                [plan.id]: e.target.value,
+                              }))
+                            }
+                            className="rounded border p-1 text-slate-900"
+                          >
+                            <option value="">Seleccionar compás</option>
+                            {parsedScore?.staves.flatMap((staff) =>
+                              staff.measures.map((measure, index) => (
+                                <option key={measure.id} value={measure.id}>
+                                  {staff.name}, compás {measure.printedNumber ?? index + 1}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => acceptIndication(plan.id)}
+                            className="underline"
+                          >
+                            Aceptar asignación
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              pushDraft();
+                              setRejectedIndications((ids) => [...ids, plan.id]);
+                            }}
+                            className="underline"
+                          >
+                            Descartar propuesta
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </fieldset>
+          )}
+          {neuralResult && parsedScore && (
+            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5 text-xs">
+              <legend className="font-semibold">Texto editorial propuesto</legend>
+              {(
+                [
+                  ['title', 'Título', parsedScore.title],
+                  ['composer', 'Compositor', parsedScore.composer],
+                  ['arranger', 'Arreglista', omrSummary?.metadataHints?.arranger ?? ''],
+                  ['partName', 'Parte', parsedScore.partName ?? ''],
+                ] as const
+              ).map(([field, label, value]) => {
+                const proposal = omrSummary?.editorial?.proposals.find(
+                  (entry) => entry.field === (field === 'partName' ? 'part' : field)
+                );
+                return (
+                  <label key={field} className="space-y-1 text-slate-700 dark:text-slate-300">
+                    <span className="font-semibold">
+                      {label}
+                      {proposal && (
+                        <span className="ml-1 font-normal opacity-75">
+                          ({Math.round(proposal.confidence * 100)} % confianza OCR)
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      type="text"
+                      value={value}
+                      maxLength={120}
+                      onChange={(event) => handleEditorialChange(field, event.target.value)}
+                      className="block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-surface px-2.5 py-1.5"
+                    />
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
           {measureAnalysis && measureAnalysis.proposals.length > 0 && (
             <fieldset className="space-y-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5 text-xs">
               <legend className="font-semibold">
@@ -443,13 +1098,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       type="checkbox"
                       className="mt-0.5"
                       checked={acceptedProposals.includes(proposal.measureId)}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        pushDraft();
                         setAcceptedProposals((ids) =>
                           event.target.checked
                             ? [...ids, proposal.measureId]
                             : ids.filter((id) => id !== proposal.measureId)
-                        )
-                      }
+                        );
+                      }}
                     />
                     <span>
                       Dividir compás {number} de {staff.name} en {proposal.replacement.length}{' '}
@@ -545,7 +1201,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
               </span>
               <CustomSelect<KeySignature>
                 value={selectedKey}
-                onChange={setSelectedKey}
+                onChange={(key) => {
+                  pushDraft();
+                  setSelectedKey(key);
+                }}
                 options={ALL_KEYS.map((k) => {
                   const data = KEY_SIGNATURE_DATA[k.key];
                   return {
@@ -580,8 +1239,19 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           </div>
 
           {/* Bottom confirmation buttons */}
+          {neuralResult && reviewResult && (
+            <p className="rounded border border-amber-500/60 bg-amber-50 p-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+              {reviewResult.warnings.length} aviso(s) y {reviewResult.report?.pendingEvents ?? 0}{' '}
+              evento(s) sin representación confirmada. Si cargas ahora, la partitura quedará
+              identificada como importación con pendientes hasta completar la revisión.
+            </p>
+          )}
           <ModalFooter className="mt-4">
-            <button type="button" onClick={handleReset} className={modalButton.secondary}>
+            <button
+              type="button"
+              onClick={() => void handleChooseOther()}
+              className={modalButton.secondary}
+            >
               Elegir otro archivo
             </button>
 

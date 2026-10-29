@@ -54,7 +54,7 @@ export function calculateItemPositions(
 
   const paddingLeft = 24;
   const paddingRight = 20;
-  const contentWidth = Math.max(80, availableWidth - paddingLeft - paddingRight);
+  const contentWidth = Math.max(0, availableWidth - paddingLeft - paddingRight);
 
   // Calculate cumulative beats
   const beatOffsets: number[] = [];

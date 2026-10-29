@@ -49,6 +49,19 @@ export interface TupletInfo {
   type?: 'start' | 'continue' | 'stop';
 }
 
+export type MetronomeBeatUnit = 'w' | 'h' | 'q' | '8' | '16';
+export interface MetronomeMark {
+  beatUnit: MetronomeBeatUnit;
+  dots: number;
+  perMinute: number;
+}
+export interface MetricEquivalence {
+  previousUnit: MetronomeBeatUnit;
+  previousDots: number;
+  nextUnit: MetronomeBeatUnit;
+  nextDots: number;
+}
+
 export interface ScoreItem {
   id: string;
   type: 'note' | 'rest';
@@ -71,6 +84,8 @@ export interface ScoreItem {
   pedal?: 'start' | 'stop';
   voice?: 1 | 2; // Polyphonic voice: Voice 1 (stems up by default) or Voice 2 (stems down)
   stemDirection?: 'up' | 'down' | 'auto'; // Explicit override of stem direction
+  omrPlaceholder?: true;
+  isFullMeasureRest?: boolean;
 }
 
 /**
@@ -92,12 +107,18 @@ export interface Measure {
   volta?: string; // e.g. "1.", "2.", "1, 3.", "2, 4."
   barline?: BarlineType; // e.g. 'double' for section boundary
   navigationMark?: NavigationMark; // Segno, Coda, D.S. al Coda, Fine, etc.
+  navigationTargetMeasureId?: string;
+  navigationExitMeasureId?: string;
   rehearsalMark?: string; // e.g. "A", "B", "Intro"
   isMeasureRepeat?: boolean; // % repeat measure sign
   caesura?: boolean; // // caesura break
   breathMark?: boolean; // ' breath mark
   tempoText?: string; // e.g. "Allegro", "Andante", "Rit.", "A tempo"
   tempoBpm?: number; // Local BPM tempo change
+  metronomeMark?: MetronomeMark;
+  metricEquivalence?: MetricEquivalence;
+  meterGlyph?: 'common';
+  printedNumber?: number;
   timeSignatureChange?: TimeSignature; // Metric modulation at measure
   keySignatureChange?: KeySignature; // Key change at measure
   isAnacrusis?: boolean;
@@ -156,7 +177,10 @@ export interface Score {
   title: string;
   subtitle?: string; // e.g. "Huapango", "Vals", "Canción"
   composer: string;
-  lyricist?: string; // Lyricist or Arranger ("Arr. por...")
+  lyricist?: string;
+  arranger?: string;
+  metronomeMark?: MetronomeMark;
+  meterGlyph?: 'common';
   partName?: string; // e.g. "Trompeta 1", "Violín I"
   copyright?: string; // e.g. "© 2026 Todos los derechos reservados"
   tempo: number; // BPM (beats per minute)

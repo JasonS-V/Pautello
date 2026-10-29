@@ -85,6 +85,7 @@ import { usePlayAlong } from './hooks/usePlayAlong';
 import { useTimeout } from './hooks/useTimeout';
 import { decompressScoreFromHash } from './utils/shareUrl';
 import { normalizeScore } from './utils/scoreSchema';
+import { loadOmrDraft } from './omr/omrDraftPersistence';
 
 import {
   loadThemePreference,
@@ -231,6 +232,19 @@ export default function App() {
     updateStaffShortName,
     updateStaffTransposition,
   } = useScore();
+
+  useEffect(() => {
+    let cancelled = false;
+    loadOmrDraft()
+      .then((draft) => {
+        if (!cancelled && draft?.result.reviewStatus && draft.score.id === score.id)
+          setOmrReview({ ...draft.result, score: draft.score });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [score.id]);
 
   const {
     playbackState,

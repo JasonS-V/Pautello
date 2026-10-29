@@ -1,13 +1,13 @@
-import { Score, Staff, getItemPitches, isPianoGrandStaff } from '../types/music';
-import { getItemBeats, pitchToMidi } from '../constants/pitches';
-import {
-  MeasureTiming,
-  getMeasureTimings,
-  resolveMeasureCapacity,
-  getMeasureItemStreamTimings,
-} from '../utils/measureTiming';
+import { Score, isPianoGrandStaff } from '../types/music';
+import { getMeasureItemStreamTimings, resolveMeasureCapacity } from '../utils/measureTiming';
 import { audioEngine, resolveStaffInstrument } from './synth';
 import { parseChordToMidi } from '../utils/chordUtils';
+import {
+  buildPlaybackPlan,
+  collectPerformedNotes,
+  PerformedNote,
+  PlaybackPlan,
+} from './playbackPlan';
 
 export interface PlaybackState {
   isPlaying: boolean;
@@ -16,717 +16,312 @@ export interface PlaybackState {
   currentItemIndex: number;
   currentBeat: number;
 }
-
 export type PlaybackListener = (state: PlaybackState) => void;
 
-interface ScheduledVisualEvent {
-  audioTime: number;
+interface CursorEvent {
+  time: number;
   measureIndex: number;
-  itemIndex: number;
-}
-
-function getTiedSoundingDuration(
-  staff: Staff,
-  measureIdx: number,
-  itemIdx: number,
-  beatDurationSec: number
-): number {
-  let totalSec = 0;
-  let m = measureIdx;
-  let i = itemIdx;
-  const currentItem = staff.measures[m]?.items[i];
-  if (!currentItem) return 0;
-  const targetVoice = currentItem.voice || 1;
-
-  while (m < staff.measures.length) {
-    const cur = staff.measures[m]?.items[i];
-    if (!cur) break;
-    const b = getItemBeats(cur.duration, cur.isDotted, cur.tuplet);
-    totalSec += b * beatDurationSec;
-
-    if (!cur.isTied) break;
-
-    let nextIdx = -1;
-    for (let k = i + 1; k < staff.measures[m].items.length; k++) {
-      if ((staff.measures[m].items[k].voice || 1) === targetVoice) {
-        nextIdx = k;
-        break;
-      }
-    }
-
-    if (nextIdx !== -1) {
-      i = nextIdx;
-    } else {
-      m++;
-      if (m >= staff.measures.length) break;
-      const nextMeas = staff.measures[m];
-      const firstSameVoiceIdx = nextMeas.items.findIndex((it) => (it.voice || 1) === targetVoice);
-      if (firstSameVoiceIdx !== -1) {
-        i = firstSameVoiceIdx;
-      } else {
-        break;
-      }
-    }
-  }
-
-  return totalSec;
-}
-
-function isTiedFromPrevious(staff: Staff, measureIdx: number, itemIdx: number): boolean {
-  const currentMeasure = staff.measures[measureIdx];
-  if (!currentMeasure) return false;
-  const currentItem = currentMeasure.items[itemIdx];
-  if (!currentItem) return false;
-  const targetVoice = currentItem.voice || 1;
-
-  for (let i = itemIdx - 1; i >= 0; i--) {
-    const it = currentMeasure.items[i];
-    if ((it.voice || 1) === targetVoice) {
-      return !!it.isTied;
-    }
-  }
-
-  if (measureIdx > 0) {
-    const prevMeasure = staff.measures[measureIdx - 1];
-    if (prevMeasure && prevMeasure.items.length > 0) {
-      for (let i = prevMeasure.items.length - 1; i >= 0; i--) {
-        const it = prevMeasure.items[i];
-        if ((it.voice || 1) === targetVoice) {
-          return !!it.isTied;
-        }
-      }
-    }
-  }
-  return false;
+  itemIndex?: number;
+  beat?: number;
 }
 
 export class ScorePlayer {
   private score: Score | null = null;
-  // Cambios locales de métrica/tempo ya resueltos, cacheados por partitura.
-  private measureTimings: MeasureTiming[] = [];
-  private isPlaying: boolean = false;
-  private isPaused: boolean = false;
-  private isLooping: boolean = false;
-  private metronomeEnabled: boolean = false;
-  private chordCompingEnabled: boolean = false;
-  private chordCompingVolume: number = 0.65;
-
-  // Visual playback cursor state
-  private visualMeasureIndex: number = 0;
-  private visualItemIndex: number = 0;
-
-  // Audio lookahead scheduler state
-  private schedulerAudioMeasureIndex: number = 0;
-  private schedulerAudioItemIndex: number = 0;
-  private nextNoteTime: number = 0;
-  private measureStartTime: number = 0;
-  private schedulerTimer: ReturnType<typeof setInterval> | null = null;
-  private cursorTimer: ReturnType<typeof setInterval> | null = null;
-  private scheduledEvents: ScheduledVisualEvent[] = [];
-  private repeatCounts: Record<number, number> = {};
-  private hasExecutedDaCapo: boolean = false;
-  private hasExecutedDalSegno: boolean = false;
-  private listeners: ((state: PlaybackState) => void)[] = [];
-  private currentSnapshot: PlaybackState = {
+  private plan: PlaybackPlan = { visits: [], diagnostics: [], durationSeconds: 0 };
+  private notes: PerformedNote[] = [];
+  private listeners: PlaybackListener[] = [];
+  private state: PlaybackState = {
     isPlaying: false,
     isPaused: false,
     currentMeasureIndex: 0,
     currentItemIndex: -1,
     currentBeat: 0,
   };
+  private loop = false;
+  private metronome = false;
+  private comping = false;
+  private compingVolume = 0.65;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private origin = 0;
+  private nextVisit = 0;
+  private nextNote = 0;
+  private nextChord = 0;
+  private nextTick = 0;
+  private loopOffset = 0;
+  private cursor: CursorEvent[] = [];
+  private startItem = 0;
+  private startVisit = 0;
+  private pausedVisit: number | null = null;
 
-  public getSnapshot(): PlaybackState {
-    return this.currentSnapshot;
+  getSnapshot(): PlaybackState {
+    return this.state;
   }
-
-  // Lookahead settings (120ms buffer, 25ms tick interval)
-  private readonly scheduleAheadTime: number = 0.12;
-  private readonly schedulerIntervalMs: number = 25;
-
-  constructor() {}
-
-  public setScore(score: Score) {
+  getDiagnostics(): string[] {
+    return this.plan.diagnostics;
+  }
+  setScore(score: Score) {
+    if (this.state.isPlaying) this.stop();
     this.score = score;
-    this.measureTimings = getMeasureTimings(score);
-    this.repeatCounts = {};
-    this.hasExecutedDaCapo = false;
-    this.hasExecutedDalSegno = false;
+    this.plan = buildPlaybackPlan(score);
+    this.notes = collectPerformedNotes(score, this.plan);
     audioEngine.preloadScoreInstruments(score);
   }
-
-  public setLoop(loop: boolean) {
-    this.isLooping = loop;
+  setLoop(value: boolean) {
+    this.loop = value;
   }
-
-  public setMetronome(enabled: boolean) {
-    this.metronomeEnabled = enabled;
+  setMetronome(value: boolean) {
+    this.metronome = value;
   }
-
-  public setChordComping(enabled: boolean, volume: number = 0.65) {
-    this.chordCompingEnabled = enabled;
-    this.chordCompingVolume = Math.max(0, Math.min(1, volume));
+  setChordComping(value: boolean, volume = 0.65) {
+    this.comping = value;
+    this.compingVolume = Math.max(0, Math.min(1, volume));
   }
-
-  public isChordCompingEnabled(): boolean {
-    return this.chordCompingEnabled;
+  isChordCompingEnabled() {
+    return this.comping;
   }
-
-  public subscribe(listener: (state: PlaybackState) => void) {
+  subscribe(listener: PlaybackListener) {
     this.listeners.push(listener);
     return () => {
-      this.listeners = this.listeners.filter((l) => l !== listener);
+      this.listeners = this.listeners.filter((item) => item !== listener);
     };
   }
-
   private notify() {
-    this.currentSnapshot = {
-      isPlaying: this.isPlaying,
-      isPaused: this.isPaused,
-      currentMeasureIndex: this.visualMeasureIndex,
-      currentItemIndex: this.visualItemIndex,
+    for (const listener of this.listeners) listener(this.state);
+  }
+
+  play(startMeasure = 0, startItem = 0) {
+    if (!this.score || this.plan.visits.length === 0) return;
+    this.stopTimer();
+    const visitIndex =
+      this.state.isPaused && this.pausedVisit !== null
+        ? this.pausedVisit
+        : Math.max(
+            0,
+            this.plan.visits.findIndex((visit) => visit.measureIndex === startMeasure)
+          );
+    this.pausedVisit = null;
+    this.startVisit = visitIndex;
+    this.nextVisit = visitIndex;
+    this.nextNote = this.notes.findIndex((note) => note.visitIndex >= visitIndex);
+    if (this.nextNote < 0) this.nextNote = this.notes.length;
+    this.nextChord = visitIndex;
+    this.nextTick = visitIndex;
+    this.loopOffset = 0;
+    this.startItem = startItem;
+    this.cursor = [];
+    this.origin = audioEngine.getCurrentTime() + 0.05 - this.plan.visits[visitIndex].startSeconds;
+    this.state = {
+      isPlaying: true,
+      isPaused: false,
+      currentMeasureIndex: this.plan.visits[visitIndex].measureIndex,
+      currentItemIndex: startItem,
       currentBeat: 0,
     };
-    this.listeners.forEach((l) => l(this.currentSnapshot));
-  }
-
-  public play(startMeasure = 0, startItem = 0) {
-    if (!this.score) return;
-
-    this.isPlaying = true;
-    this.isPaused = false;
-    this.visualMeasureIndex = startMeasure;
-    this.visualItemIndex = startItem;
-    this.schedulerAudioMeasureIndex = startMeasure;
-    this.schedulerAudioItemIndex = startItem;
-    this.scheduledEvents = [];
-
-    if (startMeasure === 0 && startItem === 0) {
-      this.repeatCounts = {};
-      this.hasExecutedDaCapo = false;
-      this.hasExecutedDalSegno = false;
-    }
-
-    // Initialize audio clock with small 50ms buffer
-    const now = audioEngine.getCurrentTime();
-    this.nextNoteTime = now + 0.05;
-
     this.notify();
-    this.startScheduler();
+    this.schedule();
+    this.timer = setInterval(() => this.schedule(), 25);
   }
-
-  public pause() {
-    if (!this.isPlaying) return;
-    this.isPlaying = false;
-    this.isPaused = true;
-    this.stopTimers();
+  pause() {
+    if (!this.state.isPlaying) return;
+    const elapsed = audioEngine.getCurrentTime() - this.origin - this.loopOffset;
+    this.pausedVisit = 0;
+    for (let index = 0; index < this.plan.visits.length; index++) {
+      if (this.plan.visits[index].startSeconds > elapsed) break;
+      this.pausedVisit = index;
+    }
+    this.stopTimer();
     audioEngine.stopAll();
+    this.state = { ...this.state, isPlaying: false, isPaused: true };
     this.notify();
   }
-
-  public stop() {
-    this.isPlaying = false;
-    this.isPaused = false;
-    this.visualMeasureIndex = 0;
-    this.visualItemIndex = -1;
-    this.schedulerAudioMeasureIndex = 0;
-    this.schedulerAudioItemIndex = 0;
-    this.scheduledEvents = [];
-    this.repeatCounts = {};
-    this.hasExecutedDaCapo = false;
-    this.hasExecutedDalSegno = false;
-    this.stopTimers();
+  stop() {
+    this.pausedVisit = null;
+    this.stopTimer();
     audioEngine.stopAll();
-    this.notify();
-  }
-
-  private stopTimers() {
-    if (this.schedulerTimer) {
-      clearInterval(this.schedulerTimer);
-      this.schedulerTimer = null;
-    }
-    if (this.cursorTimer) {
-      clearInterval(this.cursorTimer);
-      this.cursorTimer = null;
-    }
-  }
-
-  private startScheduler() {
-    this.stopTimers();
-
-    // Run scheduler immediately and on intervals
-    this.schedulerLoop();
-    this.schedulerTimer = setInterval(() => this.schedulerLoop(), this.schedulerIntervalMs);
-    this.cursorTimer = setInterval(() => this.cursorLoop(), 16);
-  }
-
-  private getEffectiveMeasureItems(staff: Staff, measureIdx: number) {
-    const measure = staff.measures[measureIdx];
-    if (!measure) return [];
-    if (measure.isMeasureRepeat && measureIdx > 0) {
-      const prevMeasure = staff.measures[measureIdx - 1];
-      if (prevMeasure && prevMeasure.items.length > 0) {
-        return prevMeasure.items;
-      }
-    }
-    return measure.items;
-  }
-
-  /**
-   * Lookahead scheduler: reads ahead and schedules audio events into Web Audio context
-   */
-  private schedulerLoop() {
-    if (!this.isPlaying || !this.score) return;
-
-    const staff = this.score.staves[0];
-    if (!staff || staff.measures.length === 0) {
-      this.onFinish();
-      return;
-    }
-
-    const currentTime = audioEngine.getCurrentTime();
-
-    while (this.isPlaying && this.nextNoteTime < currentTime + this.scheduleAheadTime) {
-      if (this.schedulerAudioMeasureIndex >= staff.measures.length) {
-        if (this.isLooping) {
-          this.repeatCounts = {};
-          this.hasExecutedDaCapo = false;
-          this.hasExecutedDalSegno = false;
-          this.schedulerAudioMeasureIndex = 0;
-          this.schedulerAudioItemIndex = 0;
-        } else {
-          // Reached end of score, stop scheduling and let queued events finish
-          break;
-        }
-      }
-
-      const measure = staff.measures[this.schedulerAudioMeasureIndex];
-      if (!measure) {
-        this.schedulerAudioMeasureIndex++;
-        this.schedulerAudioItemIndex = 0;
-        continue;
-      }
-
-      const effectiveItems = this.getEffectiveMeasureItems(staff, this.schedulerAudioMeasureIndex);
-
-      // Check if current measure is completed
-      if (this.schedulerAudioItemIndex >= effectiveItems.length) {
-        // 1. Navigation: Fine (if already executed D.C. or D.S.)
-        if (
-          measure.navigationMark === 'fine' &&
-          (this.hasExecutedDaCapo || this.hasExecutedDalSegno)
-        ) {
-          this.schedulerAudioMeasureIndex = staff.measures.length;
-          break;
-        }
-
-        // 2. Navigation: Da Capo / Da Capo al Fine
-        if (
-          (measure.navigationMark === 'daCapo' || measure.navigationMark === 'daCapoAlFine') &&
-          !this.hasExecutedDaCapo
-        ) {
-          this.hasExecutedDaCapo = true;
-          this.schedulerAudioMeasureIndex = 0;
-          this.schedulerAudioItemIndex = 0;
-          continue;
-        }
-
-        // 3. Navigation: Dal Segno / Dal Segno al Coda
-        if (
-          (measure.navigationMark === 'dalSegno' || measure.navigationMark === 'dalSegnoAlCoda') &&
-          !this.hasExecutedDalSegno
-        ) {
-          this.hasExecutedDalSegno = true;
-          const segnoIdx = staff.measures.findIndex((m) => m.navigationMark === 'segno');
-          if (segnoIdx !== -1) {
-            this.schedulerAudioMeasureIndex = segnoIdx;
-            this.schedulerAudioItemIndex = 0;
-            continue;
-          }
-        }
-
-        // 4. Navigation: To Coda (on second pass after D.S. or D.C.)
-        if (
-          measure.navigationMark === 'toCoda' &&
-          (this.hasExecutedDalSegno || this.hasExecutedDaCapo)
-        ) {
-          const codaIdx = staff.measures.findIndex(
-            (m, idx) => idx > this.schedulerAudioMeasureIndex && m.navigationMark === 'coda'
-          );
-          if (codaIdx !== -1) {
-            this.schedulerAudioMeasureIndex = codaIdx;
-            this.schedulerAudioItemIndex = 0;
-            continue;
-          }
-        }
-
-        // 5. Normal Repeat End
-        if (measure.repeatEnd) {
-          const timesRepeated = this.repeatCounts[this.schedulerAudioMeasureIndex] || 0;
-          const maxRepeats = measure.repeatCount || 2;
-          if (timesRepeated + 1 < maxRepeats) {
-            this.repeatCounts[this.schedulerAudioMeasureIndex] = timesRepeated + 1;
-            let startIdx = 0;
-            for (let i = this.schedulerAudioMeasureIndex; i >= 0; i--) {
-              if (staff.measures[i]?.repeatStart) {
-                startIdx = i;
-                break;
-              }
-            }
-            this.schedulerAudioMeasureIndex = startIdx;
-            this.schedulerAudioItemIndex = 0;
-            continue;
-          }
-        }
-
-        // Advance to next measure
-        this.schedulerAudioMeasureIndex++;
-        this.schedulerAudioItemIndex = 0;
-
-        // Handle Voltas
-        if (this.schedulerAudioMeasureIndex < staff.measures.length) {
-          const nextM = staff.measures[this.schedulerAudioMeasureIndex];
-          if (nextM?.volta && (nextM.volta.startsWith('1') || nextM.volta.includes('1.'))) {
-            let repeatEndIdx = -1;
-            for (let i = this.schedulerAudioMeasureIndex; i < staff.measures.length; i++) {
-              if (staff.measures[i]?.repeatEnd) {
-                repeatEndIdx = i;
-                break;
-              }
-            }
-            if (repeatEndIdx !== -1 && (this.repeatCounts[repeatEndIdx] || 0) > 0) {
-              let secondEndingIdx = -1;
-              for (let i = repeatEndIdx + 1; i < staff.measures.length; i++) {
-                const m = staff.measures[i];
-                if (m?.volta && (m.volta.startsWith('2') || m.volta.includes('2.'))) {
-                  secondEndingIdx = i;
-                  break;
-                }
-              }
-              this.schedulerAudioMeasureIndex =
-                secondEndingIdx !== -1 ? secondEndingIdx : repeatEndIdx + 1;
-            }
-          }
-        }
-        continue;
-      }
-
-      // Schedule current item
-      this.scheduleCurrentItem(staff, measure);
-    }
-
-    // Check if playback has naturally finished
-    if (
-      this.schedulerAudioMeasureIndex >= staff.measures.length &&
-      this.scheduledEvents.length === 0 &&
-      currentTime >= this.nextNoteTime
-    ) {
-      this.onFinish();
-    }
-  }
-
-  private scheduleCurrentItem(staff: Staff, measure: (typeof staff.measures)[0]) {
-    if (!this.score) return;
-
-    const measureIdx = this.schedulerAudioMeasureIndex;
-    const itemIdx = this.schedulerAudioItemIndex;
-    const effectiveItems = this.getEffectiveMeasureItems(staff, measureIdx);
-    const item = effectiveItems[itemIdx];
-    if (!item) {
-      this.schedulerAudioItemIndex++;
-      return;
-    }
-
-    // Los cambios locales de compás y tempo se heredan, así que la métrica y la
-    // duración del pulso se resuelven compás a compás en lugar de usar solo los
-    // valores globales de la partitura.
-    const timing =
-      this.measureTimings[measureIdx] || this.measureTimings[this.measureTimings.length - 1];
-    const maxMeasureBeats = resolveMeasureCapacity(this.score, measure, measureIdx);
-    const tempo = timing?.tempo ?? this.score.tempo;
-    const beatDurationSec = 60 / Math.max(30, Math.min(300, tempo));
-
-    // Handle Multimeasure Rest (Tacet)
-    if (measure.multimeasureRest && measure.multimeasureRest > 1) {
-      const totalTacetBeats = measure.multimeasureRest * maxMeasureBeats;
-      const tacetDurationSec = totalTacetBeats * beatDurationSec;
-
-      if (this.metronomeEnabled) {
-        for (let b = 0; b < totalTacetBeats; b++) {
-          const isDownbeat = b % maxMeasureBeats === 0;
-          audioEngine.playMetronomeTick(isDownbeat, this.nextNoteTime + b * beatDurationSec);
-        }
-      }
-
-      this.scheduledEvents.push({
-        audioTime: this.nextNoteTime,
-        measureIndex: measureIdx,
-        itemIndex: 0,
-      });
-
-      this.nextNoteTime += tacetDurationSec;
-      this.schedulerAudioItemIndex = effectiveItems.length; // Jump to next bar
-      return;
-    }
-
-    // Normal item duration calculation
-    let beats = getItemBeats(item.duration, item.isDotted, item.tuplet);
-    if (item.type === 'rest' && item.duration === 'w' && beats > maxMeasureBeats) {
-      beats = maxMeasureBeats;
-    }
-
-    let itemDurationSec = beats * beatDurationSec;
-    if (item.articulation === 'fermata') {
-      itemDurationSec *= 1.8;
-    }
-
-    const isGrand = isPianoGrandStaff(this.score);
-    const staffInstrument = resolveStaffInstrument(staff, isGrand, audioEngine.instrument);
-
-    const DYNAMIC_VELOCITIES: Record<string, number> = {
-      ppp: 0.25,
-      pp: 0.4,
-      p: 0.55,
-      mp: 0.7,
-      mf: 0.82,
-      f: 0.95,
-      ff: 1.0,
-      fff: 1.0,
-      sfz: 1.0,
-      fp: 0.7,
-      sfp: 0.65,
-      rfz: 0.95,
+    this.cursor = [];
+    this.state = {
+      isPlaying: false,
+      isPaused: false,
+      currentMeasureIndex: 0,
+      currentItemIndex: -1,
+      currentBeat: 0,
     };
+    this.notify();
+  }
+  private stopTimer() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
 
-    // When starting measure, record measureStartTime and schedule Voice 2 + secondary staves
-    if (itemIdx === 0) {
-      this.measureStartTime = this.nextNoteTime;
-
-      // Polyphonic Voice 2 scheduling on primary staff
-      const hasVoice2 = effectiveItems.some((it) => it.voice === 2);
-      if (hasVoice2) {
-        const v2Timings = getMeasureItemStreamTimings(effectiveItems, maxMeasureBeats);
-        v2Timings.forEach(
-          ({ item: v2Item, itemIndex: v2Idx, startBeat: v2StartBeat, durationBeats: v2Dur }) => {
-            if (v2Item.voice === 2 && v2Item.type === 'note') {
-              const isV2ContinuingTie = isTiedFromPrevious(staff, measureIdx, v2Idx);
-              if (!isV2ContinuingTie) {
-                const v2Pitches = getItemPitches(v2Item);
-                const noteStartTime = this.measureStartTime + v2StartBeat * beatDurationSec;
-                const v2DurationSec = v2Dur * beatDurationSec;
-                const totalV2Duration = v2Item.isTied
-                  ? getTiedSoundingDuration(staff, measureIdx, v2Idx, beatDurationSec)
-                  : v2DurationSec;
-
-                let vel = v2Item.dynamic ? DYNAMIC_VELOCITIES[v2Item.dynamic] || 0.8 : 0.8;
-                if (v2Item.articulation === 'accent') vel = Math.min(1.0, vel * 1.25);
-                else if (v2Item.articulation === 'staccato') vel = Math.min(1.0, vel * 1.05);
-
-                const playDur =
-                  v2Item.articulation === 'staccato'
-                    ? totalV2Duration * 0.45
-                    : v2Item.articulation === 'tenuto'
-                      ? totalV2Duration * 1.0
-                      : v2Item.articulation === 'fermata'
-                        ? totalV2Duration * 1.8
-                        : totalV2Duration * 0.96;
-
-                v2Pitches.forEach((p) => {
-                  audioEngine.playMidi(
-                    pitchToMidi(p),
-                    playDur,
-                    vel,
-                    noteStartTime,
-                    staffInstrument,
-                    0
-                  );
-                });
-
-                this.scheduledEvents.push({
-                  audioTime: noteStartTime,
-                  measureIndex: measureIdx,
-                  itemIndex: v2Idx,
-                });
-              }
-            }
-          }
-        );
-      }
-
-      // Secondary staves scheduling with multi-voice support
-      if (this.score.staves.length > 1) {
-        for (let sIdx = 1; sIdx < this.score.staves.length; sIdx++) {
-          const secStaff = this.score.staves[sIdx];
-          const secMeasure = secStaff?.measures[measureIdx];
-          if (secMeasure) {
-            const secItems = this.getEffectiveMeasureItems(secStaff, measureIdx);
-            const secInstrument = resolveStaffInstrument(secStaff, isGrand, audioEngine.instrument);
-            const secTimings = getMeasureItemStreamTimings(secItems, maxMeasureBeats);
-            secTimings.forEach(
-              ({
-                item: secItem,
-                itemIndex: secItemIdx,
-                startBeat: secStartBeat,
-                durationBeats: secDur,
-              }) => {
-                const secDuration = secDur * beatDurationSec;
-                const isSecContinuingTie = isTiedFromPrevious(secStaff, measureIdx, secItemIdx);
-
-                if (secItem.type === 'note' && !isSecContinuingTie) {
-                  const secPitches = getItemPitches(secItem);
-                  const noteStartTime = this.measureStartTime + secStartBeat * beatDurationSec;
-                  const totalSecDuration = secItem.isTied
-                    ? getTiedSoundingDuration(secStaff, measureIdx, secItemIdx, beatDurationSec)
-                    : secDuration;
-
-                  let secVel = secItem.dynamic ? DYNAMIC_VELOCITIES[secItem.dynamic] || 0.8 : 0.75;
-                  if (secItem.articulation === 'accent') secVel = Math.min(1.0, secVel * 1.25);
-                  else if (secItem.articulation === 'staccato')
-                    secVel = Math.min(1.0, secVel * 1.05);
-
-                  const secPlayDur =
-                    secItem.articulation === 'staccato'
-                      ? totalSecDuration * 0.45
-                      : secItem.articulation === 'tenuto'
-                        ? totalSecDuration * 1.0
-                        : secItem.articulation === 'fermata'
-                          ? totalSecDuration * 1.8
-                          : totalSecDuration * 0.96;
-
-                  secPitches.forEach((sp) => {
-                    const secMidi = pitchToMidi(sp);
-                    audioEngine.playMidi(
-                      secMidi,
-                      secPlayDur,
-                      secVel,
-                      noteStartTime,
-                      secInstrument,
-                      sIdx
-                    );
-                  });
-                }
-              }
-            );
-          }
+  private schedule() {
+    if (!this.state.isPlaying || !this.score) return;
+    const now = audioEngine.getCurrentTime();
+    const ahead = now + 0.12;
+    const visits = this.plan.visits;
+    const end = this.origin + this.loopOffset + this.plan.durationSeconds;
+    while (
+      this.nextVisit < visits.length &&
+      this.origin + this.loopOffset + visits[this.nextVisit].startSeconds < ahead
+    ) {
+      const visit = visits[this.nextVisit];
+      const staff = this.score.staves[0];
+      const written = staff?.measures[visit.measureIndex];
+      const measure =
+        written?.isMeasureRepeat && visit.measureIndex > 0
+          ? staff.measures[visit.measureIndex - 1]
+          : written;
+      const start = this.origin + this.loopOffset + visit.startSeconds;
+      this.cursor.push({
+        time: start,
+        measureIndex: visit.measureIndex,
+        itemIndex: -1,
+        beat: 0,
+      });
+      if (measure) {
+        const capacity = resolveMeasureCapacity(this.score, measure, visit.measureIndex);
+        for (const { item, itemIndex, startBeat } of getMeasureItemStreamTimings(
+          measure.items,
+          capacity
+        )) {
+          if ((item.voice ?? 1) !== 1) continue;
+          if (
+            this.loopOffset === 0 &&
+            this.nextVisit === this.startVisit &&
+            itemIndex < this.startItem
+          )
+            continue;
+          this.cursor.push({
+            time: start + (startBeat * 60) / visit.tempo,
+            measureIndex: visit.measureIndex,
+            itemIndex,
+          });
         }
       }
+      for (let beat = 1; beat < Math.ceil(visit.durationBeats); beat++)
+        this.cursor.push({
+          time: start + (beat * 60) / visit.tempo,
+          measureIndex: visit.measureIndex,
+          beat,
+        });
+      this.nextVisit++;
     }
-
-    // Voice 2 items on primary staff were already scheduled at measure start
-    if (item.voice === 2) {
-      this.schedulerAudioItemIndex++;
-      if (this.schedulerAudioItemIndex >= effectiveItems.length) {
-        this.nextNoteTime = Math.max(
-          this.nextNoteTime,
-          this.measureStartTime + maxMeasureBeats * beatDurationSec
-        );
-      }
-      return;
-    }
-
-    // Metronome tick scheduling
-    if (this.metronomeEnabled) {
-      const isDownbeat = itemIdx === 0 && !(measureIdx === 0 && measure.isAnacrusis);
-      audioEngine.playMetronomeTick(isDownbeat, this.nextNoteTime);
-
-      const fullBeats = Math.floor(beats);
-      for (let b = 1; b < fullBeats; b++) {
-        audioEngine.playMetronomeTick(false, this.nextNoteTime + b * beatDurationSec);
-      }
-    }
-
-    // Sound generation for primary staff note
-    const isContinuingTie = isTiedFromPrevious(staff, measureIdx, itemIdx);
-    if (item.type === 'note' && !isContinuingTie) {
-      const pitches = getItemPitches(item);
-      let velocity = item.dynamic ? DYNAMIC_VELOCITIES[item.dynamic] || 0.8 : 0.8;
-      if (item.articulation === 'accent') velocity = Math.min(1.0, velocity * 1.25);
-      else if (item.articulation === 'staccato') velocity = Math.min(1.0, velocity * 1.05);
-
-      const totalDurationSec = item.isTied
-        ? getTiedSoundingDuration(staff, measureIdx, itemIdx, beatDurationSec)
-        : itemDurationSec;
-
-      const playDuration =
+    while (
+      this.nextNote < this.notes.length &&
+      this.origin + this.loopOffset + this.notes[this.nextNote].startSeconds < ahead
+    ) {
+      const note = this.notes[this.nextNote++];
+      if (
+        this.loopOffset === 0 &&
+        note.visitIndex === this.startVisit &&
+        note.staffIndex === 0 &&
+        note.itemIndex < this.startItem
+      )
+        continue;
+      const item = note.item;
+      const total = note.endSeconds - note.startSeconds;
+      const factor =
         item.articulation === 'staccato'
-          ? totalDurationSec * 0.45
-          : item.articulation === 'tenuto'
-            ? totalDurationSec * 1.0
-            : item.articulation === 'fermata'
-              ? totalDurationSec * 1.8
-              : totalDurationSec * 0.96;
-
-      pitches.forEach((p) => {
-        const midi = pitchToMidi(p);
-        audioEngine.playMidi(midi, playDuration, velocity, this.nextNoteTime, staffInstrument, 0);
-      });
+          ? 0.45
+          : item.articulation === 'fermata'
+            ? 1.8
+            : item.articulation === 'tenuto'
+              ? 1
+              : 0.96;
+      const velocities: Record<string, number> = {
+        ppp: 0.25,
+        pp: 0.4,
+        p: 0.55,
+        mp: 0.7,
+        mf: 0.82,
+        f: 0.95,
+        ff: 1,
+        fff: 1,
+      };
+      let velocity = item.dynamic ? (velocities[item.dynamic] ?? 0.8) : 0.8;
+      if (item.articulation === 'accent') velocity = Math.min(1, velocity * 1.25);
+      const staff = this.score.staves[note.staffIndex];
+      audioEngine.playMidi(
+        note.pitch,
+        total * factor,
+        velocity,
+        this.origin + this.loopOffset + note.startSeconds,
+        resolveStaffInstrument(staff, isPianoGrandStaff(this.score), audioEngine.instrument),
+        note.staffIndex
+      );
     }
+    if (this.comping) this.scheduleChords(ahead);
+    if (this.metronome) this.scheduleMetronome(ahead);
+    this.cursor.sort((a, b) => a.time - b.time);
+    while (this.cursor.length && this.cursor[0].time <= now) {
+      const event = this.cursor.shift()!;
+      this.state = {
+        ...this.state,
+        currentMeasureIndex: event.measureIndex,
+        currentItemIndex: event.itemIndex ?? this.state.currentItemIndex,
+        currentBeat: event.beat ?? this.state.currentBeat,
+      };
+      this.notify();
+    }
+    if (this.nextVisit === visits.length && this.nextNote === this.notes.length && now >= end) {
+      if (this.loop && this.plan.durationSeconds > 0) {
+        this.loopOffset += this.plan.durationSeconds;
+        this.nextVisit = this.nextChord = this.nextTick = this.nextNote = 0;
+      } else if (this.cursor.length === 0) {
+        this.stopTimer();
+        this.state = {
+          isPlaying: false,
+          isPaused: false,
+          currentMeasureIndex: 0,
+          currentItemIndex: -1,
+          currentBeat: 0,
+        };
+        this.notify();
+      }
+    }
+  }
 
-    // Chord comping harmonic accompaniment
-    if (this.chordCompingEnabled && item.chord) {
-      const chordMidis = parseChordToMidi(item.chord);
-      if (chordMidis.length > 0) {
-        const chordPlayDur = Math.max(0.3, Math.min(itemDurationSec * 0.96, 2.5));
-        chordMidis.forEach((cMidi) => {
-          audioEngine.playMidi(
-            cMidi,
-            chordPlayDur,
-            this.chordCompingVolume,
-            this.nextNoteTime,
-            'piano',
-            0
+  private scheduleMetronome(ahead: number) {
+    while (this.nextTick < this.plan.visits.length) {
+      const visit = this.plan.visits[this.nextTick];
+      const start = this.origin + this.loopOffset + visit.startSeconds;
+      if (start >= ahead) break;
+      for (let beat = 0; beat < Math.ceil(visit.durationBeats); beat++) {
+        const time = start + (beat * 60) / visit.tempo;
+        if (time >= audioEngine.getCurrentTime()) audioEngine.playMetronomeTick(beat === 0, time);
+      }
+      this.nextTick++;
+    }
+  }
+
+  private scheduleChords(ahead: number) {
+    if (!this.score) return;
+    while (this.nextChord < this.plan.visits.length) {
+      const visit = this.plan.visits[this.nextChord];
+      const start = this.origin + this.loopOffset + visit.startSeconds;
+      if (start >= ahead) break;
+      const measure = this.score.staves[0]?.measures[visit.measureIndex];
+      if (measure) {
+        const timings = getMeasureItemStreamTimings(
+          measure.items,
+          resolveMeasureCapacity(this.score, measure, visit.measureIndex)
+        );
+        timings.forEach(({ item, startBeat, durationBeats }) => {
+          if (!item.chord) return;
+          const time = start + (startBeat * 60) / visit.tempo;
+          parseChordToMidi(item.chord).forEach((midi) =>
+            audioEngine.playMidi(
+              midi,
+              ((durationBeats * 60) / visit.tempo) * 0.96,
+              this.compingVolume,
+              time,
+              'piano',
+              0
+            )
           );
         });
       }
+      this.nextChord++;
     }
-
-    // Enqueue visual cursor synchronization event
-    this.scheduledEvents.push({
-      audioTime: this.nextNoteTime,
-      measureIndex: measureIdx,
-      itemIndex: itemIdx,
-    });
-
-    this.scheduledEvents.sort((a, b) => a.audioTime - b.audioTime);
-
-    this.nextNoteTime += itemDurationSec;
-    this.schedulerAudioItemIndex++;
-
-    if (this.schedulerAudioItemIndex >= effectiveItems.length) {
-      this.nextNoteTime = Math.max(
-        this.nextNoteTime,
-        this.measureStartTime + maxMeasureBeats * beatDurationSec
-      );
-    }
-  }
-
-  /**
-   * Sync visual playhead cursor with native Web Audio currentTime
-   */
-  private cursorLoop() {
-    if (!this.isPlaying) return;
-
-    const currentTime = audioEngine.getCurrentTime();
-    let updated = false;
-
-    while (this.scheduledEvents.length > 0 && this.scheduledEvents[0].audioTime <= currentTime) {
-      const ev = this.scheduledEvents.shift()!;
-      this.visualMeasureIndex = ev.measureIndex;
-      this.visualItemIndex = ev.itemIndex;
-      updated = true;
-    }
-
-    if (updated) {
-      this.notify();
-    }
-  }
-
-  private onFinish() {
-    this.isPlaying = false;
-    this.isPaused = false;
-    this.visualMeasureIndex = 0;
-    this.visualItemIndex = -1;
-    this.stopTimers();
-    this.notify();
   }
 }
 

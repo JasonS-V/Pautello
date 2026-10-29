@@ -12,8 +12,10 @@ import {
   Accidental,
   Measure,
   Staff,
+  MetronomeBeatUnit,
 } from '../types/music';
 import { KEY_SIGNATURE_DATA, getItemBeats } from '../constants/pitches';
+import { resolveMeasureCapacity } from './measureTiming';
 
 const DURATION_TO_XML_TYPE: Record<NoteDuration, string> = {
   w: 'whole',
@@ -68,19 +70,25 @@ const FIFTHS_TO_MINOR_KEY: Record<number, KeySignature> = {
 };
 
 export function exportScoreToMusicXml(score: Score): string {
-  const divisions = 4; // 1 quarter note = 4 divisions
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const divisions = score.staves.reduce(
+    (value, staff) =>
+      staff.measures.reduce(
+        (current, measure) =>
+          measure.items.reduce(
+            (result, item) =>
+              item.tuplet
+                ? (result * (item.tuplet.actual * 16)) / gcd(result, item.tuplet.actual * 16)
+                : result,
+            current
+          ),
+        value
+      ),
+    16
+  );
   const keyData = KEY_SIGNATURE_DATA[score.keySignature] || { accidentals: 0, type: 'none' };
   const fifths =
     keyData.type === '#' ? keyData.accidentals : keyData.type === 'b' ? -keyData.accidentals : 0;
-
-  const durationDivisions: Record<NoteDuration, number> = {
-    w: divisions * 4,
-    h: divisions * 2,
-    q: divisions,
-    '8': divisions / 2,
-    '16': divisions / 4,
-    '32': divisions / 8,
-  };
 
   let xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE score-partwise PUBLIC
@@ -92,6 +100,9 @@ export function exportScoreToMusicXml(score: Score): string {
   </work>
   <identification>
     <creator type="composer">${escapeXml(score.composer)}</creator>
+    ${score.arranger ? `<creator type="arranger">${escapeXml(score.arranger)}</creator>` : ''}
+    ${score.lyricist ? `<creator type="lyricist">${escapeXml(score.lyricist)}</creator>` : ''}
+    ${score.copyright ? `<rights>${escapeXml(score.copyright)}</rights>` : ''}
     <encoding>
       <software>Pautello Sheet Music Editor</software>
     </encoding>
@@ -101,7 +112,8 @@ export function exportScoreToMusicXml(score: Score): string {
 
   score.staves.forEach((staff, sIdx) => {
     xml += `    <score-part id="P${sIdx + 1}">
-      <part-name>${escapeXml(staff.name || 'Instrumento')}</part-name>
+      <part-name>${escapeXml(sIdx === 0 && score.staves.length === 1 ? score.partName || staff.name || 'Instrumento' : staff.name || 'Instrumento')}</part-name>
+      ${staff.shortName ? `<part-abbreviation>${escapeXml(staff.shortName)}</part-abbreviation>` : ''}
     </score-part>\n`;
   });
 
@@ -113,15 +125,15 @@ export function exportScoreToMusicXml(score: Score): string {
     const hasAnacrusis = staff.measures[0]?.isAnacrusis ?? false;
     staff.measures.forEach((measure, mIdx) => {
       const isPickup = mIdx === 0 && (measure.isAnacrusis ?? false);
-      const measureNum = hasAnacrusis ? mIdx : mIdx + 1;
+      const measureNum = measure.printedNumber ?? (hasAnacrusis ? mIdx : mIdx + 1);
       const measureOpening = isPickup
         ? `<measure number="0" implicit="yes">`
         : `<measure number="${measureNum}">`;
       xml += `    ${measureOpening}\n`;
 
-      if (measure.pageBreak) {
+      if (mIdx > 0 && staff.measures[mIdx - 1].pageBreak) {
         xml += `      <print new-page="yes"/>\n`;
-      } else if (measure.systemBreak) {
+      } else if (mIdx > 0 && staff.measures[mIdx - 1].systemBreak) {
         xml += `      <print new-system="yes"/>\n`;
       }
 
@@ -144,7 +156,7 @@ export function exportScoreToMusicXml(score: Score): string {
           <fifths>${fifths}</fifths>
           <mode>${score.keySignature.endsWith('m') ? 'minor' : 'major'}</mode>
         </key>
-        <time>
+        <time${score.meterGlyph === 'common' ? ' symbol="common"' : ''}>
           <beats>${score.timeSignature.beats}</beats>
           <beat-type>${score.timeSignature.beatType}</beat-type>
         </time>
@@ -153,9 +165,70 @@ export function exportScoreToMusicXml(score: Score): string {
           <line>${clefLine}</line>
         </clef>
       </attributes>
-      <direction placement="above">
-        <sound tempo="${score.tempo}"/>
-      </direction>\n`;
+      <sound tempo="${score.tempo}"/>\n`;
+      }
+
+      if (measure.timeSignatureChange || measure.keySignatureChange) {
+        const localKey = measure.keySignatureChange
+          ? KEY_SIGNATURE_DATA[measure.keySignatureChange]
+          : undefined;
+        const localFifths = localKey
+          ? localKey.type === '#'
+            ? localKey.accidentals
+            : localKey.type === 'b'
+              ? -localKey.accidentals
+              : 0
+          : 0;
+        xml += `      <attributes>\n`;
+        if (measure.keySignatureChange)
+          xml += `        <key><fifths>${localFifths}</fifths><mode>${measure.keySignatureChange.endsWith('m') ? 'minor' : 'major'}</mode></key>\n`;
+        if (measure.timeSignatureChange)
+          xml += `        <time${measure.meterGlyph === 'common' ? ' symbol="common"' : ''}><beats>${measure.timeSignatureChange.beats}</beats><beat-type>${measure.timeSignatureChange.beatType}</beat-type></time>\n`;
+        xml += `      </attributes>\n`;
+      }
+
+      const direction = (content: string, sound = '') => {
+        xml += `      <direction placement="above"><direction-type>${content}</direction-type>${sound}</direction>\n`;
+      };
+      if (measure.rehearsalMark)
+        direction(`<rehearsal>${escapeXml(measure.rehearsalMark)}</rehearsal>`);
+      if (measure.tempoText) direction(`<words>${escapeXml(measure.tempoText)}</words>`);
+      const metronome = measure.metronomeMark ?? (mIdx === 0 ? score.metronomeMark : undefined);
+      if (metronome)
+        direction(
+          `<metronome><beat-unit>${DURATION_TO_XML_TYPE[metronome.beatUnit]}</beat-unit>${'<beat-unit-dot/>'.repeat(metronome.dots)}<per-minute>${metronome.perMinute}</per-minute></metronome>`,
+          `<sound tempo="${measure.tempoBpm ?? (mIdx === 0 ? score.tempo : metronome.perMinute)}"/>`
+        );
+      if (measure.metricEquivalence) {
+        const eq = measure.metricEquivalence;
+        direction(
+          `<metronome><beat-unit>${DURATION_TO_XML_TYPE[eq.previousUnit]}</beat-unit>${'<beat-unit-dot/>'.repeat(eq.previousDots)}<beat-unit>${DURATION_TO_XML_TYPE[eq.nextUnit]}</beat-unit>${'<beat-unit-dot/>'.repeat(eq.nextDots)}</metronome>`
+        );
+      }
+      if (measure.tempoBpm && !metronome) xml += `      <sound tempo="${measure.tempoBpm}"/>\n`;
+      const mark = measure.navigationMark;
+      if (mark === 'segno' || mark === 'coda')
+        direction(`<${mark}/>`, `<sound ${mark}="${mark}-${mIdx}"/>`);
+      else if (mark) {
+        const labels: Record<string, string> = {
+          daCapo: 'D.C.',
+          dalSegno: 'D.S.',
+          daCapoAlFine: 'D.C. al Fine',
+          dalSegnoAlCoda: 'D.S. al Coda',
+          toCoda: 'To Coda',
+          fine: 'Fine',
+        };
+        const target = score.staves[0].measures.findIndex(
+          (m) => m.id === measure.navigationTargetMeasureId
+        );
+        const sound = mark.startsWith('daCapo')
+          ? 'dacapo="yes"'
+          : mark.startsWith('dalSegno')
+            ? `dalsegno="segno-${target >= 0 ? target : 0}"`
+            : mark === 'toCoda'
+              ? `tocoda="coda-${score.staves[0].measures.findIndex((m) => m.navigationMark === 'coda')}"`
+              : 'fine="yes"';
+        direction(`<words>${labels[mark]}</words>`, `<sound ${sound}/>`);
       }
 
       if (measure.repeatStart) {
@@ -177,21 +250,34 @@ export function exportScoreToMusicXml(score: Score): string {
         defaultStem?: 'up' | 'down'
       ): { itemXml: string; durationDiv: number } => {
         let itemXml = '';
-        let baseDiv = durationDivisions[item.duration] || 4;
-        if (item.isDotted) baseDiv = Math.round(baseDiv * 1.5);
+        const fullRest =
+          item.type === 'rest' &&
+          (item.isFullMeasureRest === true ||
+            (item.isFullMeasureRest !== false &&
+              measure.items.length === 1 &&
+              item.duration === 'w'));
+        const baseDiv = Math.round(
+          (fullRest
+            ? resolveMeasureCapacity(score, measure, mIdx)
+            : getItemBeats(item.duration, item.isDotted, item.tuplet)) * divisions
+        );
         const xmlType = DURATION_TO_XML_TYPE[item.duration] || 'quarter';
         const stemDir =
           item.stemDirection && item.stemDirection !== 'auto' ? item.stemDirection : defaultStem;
 
         if (item.type === 'rest') {
           itemXml += `      <note>\n`;
-          itemXml += `        <rest/>\n`;
+          itemXml += `        <rest${fullRest ? ' measure="yes"' : ''}/>\n`;
           itemXml += `        <duration>${baseDiv}</duration>
         <voice>${item.voice || 1}</voice>
         <type>${xmlType}</type>\n`;
           if (item.isDotted) {
             itemXml += `        <dot/>\n`;
           }
+          if (item.tuplet)
+            itemXml += `        <time-modification><actual-notes>${item.tuplet.actual}</actual-notes><normal-notes>${item.tuplet.normal}</normal-notes></time-modification>\n`;
+          if (item.articulation === 'fermata')
+            itemXml += `        <notations><fermata type="upright"/></notations>\n`;
           if (item.lyric) {
             itemXml += `        <lyric>
           <text>${escapeXml(item.lyric)}</text>
@@ -201,6 +287,25 @@ export function exportScoreToMusicXml(score: Score): string {
         } else {
           const pitches = getItemPitches(item);
           pitches.forEach((p, pIdx) => {
+            const itemIdx = measure.items.indexOf(item);
+            const voice = item.voice || 1;
+            const previous =
+              [...measure.items.slice(0, itemIdx)]
+                .reverse()
+                .find((other) => (other.voice || 1) === voice) ??
+              (mIdx > 0
+                ? [...staff.measures[mIdx - 1].items]
+                    .reverse()
+                    .find((other) => (other.voice || 1) === voice)
+                : undefined);
+            const tieStop =
+              previous?.isTied &&
+              getItemPitches(previous).some(
+                (other) =>
+                  other.step === p.step &&
+                  other.octave === p.octave &&
+                  other.accidental === p.accidental
+              );
             const alter =
               p.accidental === '##'
                 ? 2
@@ -220,6 +325,14 @@ export function exportScoreToMusicXml(score: Score): string {
           ${alter !== 0 ? `<alter>${alter}</alter>` : ''}
           <octave>${p.octave}</octave>
         </pitch>\n`;
+            itemXml += `        <duration>${baseDiv}</duration>\n`;
+            if (tieStop) itemXml += `        <tie type="stop"/>\n`;
+            if (item.isTied) {
+              itemXml += `        <tie type="start"/>\n`;
+            }
+
+            itemXml += `        <voice>${item.voice || 1}</voice>\n        <type>${xmlType}</type>\n`;
+            if (item.isDotted) itemXml += `        <dot/>\n`;
             if (p.accidental) {
               const accName =
                 p.accidental === '##'
@@ -233,16 +346,6 @@ export function exportScoreToMusicXml(score: Score): string {
                         : 'natural';
               itemXml += `        <accidental>${accName}</accidental>\n`;
             }
-            itemXml += `        <duration>${baseDiv}</duration>
-        <voice>${item.voice || 1}</voice>
-        <type>${xmlType}</type>\n`;
-            if (stemDir) {
-              itemXml += `        <stem>${stemDir}</stem>\n`;
-            }
-
-            if (item.isTied) {
-              itemXml += `        <tie type="start"/>\n`;
-            }
 
             if (item.tuplet) {
               itemXml += `        <time-modification>
@@ -251,14 +354,22 @@ export function exportScoreToMusicXml(score: Score): string {
         </time-modification>\n`;
             }
 
-            if (item.isDotted) {
-              itemXml += `        <dot/>\n`;
-            }
-            if (item.isTied || item.slur || item.articulation || item.dynamic) {
+            if (stemDir) itemXml += `        <stem>${stemDir}</stem>\n`;
+            if (
+              tieStop ||
+              item.isTied ||
+              item.slur ||
+              item.articulation ||
+              item.dynamic ||
+              item.tuplet?.type
+            ) {
               itemXml += `        <notations>\n`;
+              if (tieStop) itemXml += `          <tied type="stop"/>\n`;
               if (item.isTied) {
                 itemXml += `          <tied type="start"/>\n`;
               }
+              if (item.tuplet?.type && item.tuplet.type !== 'continue')
+                itemXml += `          <tuplet type="${item.tuplet.type}" number="1"/>\n`;
               if (item.slur) {
                 itemXml += `          <slur type="${item.slur}" number="1"/>\n`;
               }
@@ -315,7 +426,7 @@ export function exportScoreToMusicXml(score: Score): string {
       if (measure.repeatEnd) {
         xml += `      <barline location="right">
         <bar-style>light-heavy</bar-style>
-        <repeat direction="backward"/>
+        <repeat direction="backward"${measure.repeatCount ? ` times="${measure.repeatCount}"` : ''}/>
         ${measure.volta ? `<ending number="${measure.volta.replace(/[^0-9, ]/g, '')}" type="stop"/>` : ''}
       </barline>\n`;
       }
@@ -353,6 +464,7 @@ export function importMusicXmlToScore(xmlString: string): Score {
   if (typeof DOMParser !== 'undefined') {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlString, 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('MusicXML inválido');
 
     const title =
       doc.querySelector('work-title')?.textContent?.trim() ||
@@ -362,6 +474,11 @@ export function importMusicXmlToScore(xmlString: string): Score {
       doc.querySelector('creator[type="composer"]')?.textContent?.trim() ||
       doc.querySelector('creator')?.textContent?.trim() ||
       'Desconocido';
+    const arranger =
+      doc.querySelector('creator[type="arranger"]')?.textContent?.trim() || undefined;
+    const lyricist =
+      doc.querySelector('creator[type="lyricist"]')?.textContent?.trim() || undefined;
+    const copyright = doc.querySelector('identification rights')?.textContent?.trim() || undefined;
 
     let tempo = 120;
     const soundEl = doc.querySelector('sound[tempo]');
@@ -447,6 +564,8 @@ export function importMusicXmlToScore(xmlString: string): Score {
           tuplet,
           lyric,
           voice,
+          isFullMeasureRest,
+          articulation: nEl.querySelector('fermata') ? 'fermata' : undefined,
         });
         return;
       }
@@ -520,6 +639,10 @@ export function importMusicXmlToScore(xmlString: string): Score {
       const repeatEnd =
         !!mEl.querySelector('barline[location="right"] repeat[direction="backward"]') ||
         !!mEl.querySelector('repeat[direction="backward"]');
+      const repeatCountText = mEl
+        .querySelector('repeat[direction="backward"]')
+        ?.getAttribute('times');
+      const repeatCount = repeatCountText ? Number(repeatCountText) : undefined;
       const endingEl = mEl.querySelector('ending');
       const endingNum = endingEl?.getAttribute('number');
       const volta = endingEl
@@ -535,16 +658,111 @@ export function importMusicXmlToScore(xmlString: string): Score {
       const multimeasureRest = multiRestEl
         ? parseInt(multiRestEl.textContent || '0', 10)
         : undefined;
+      const timeEl = mEl.querySelector('attributes time');
+      const localTime =
+        timeEl && mIdx > 0
+          ? {
+              beats: parseInt(timeEl.querySelector('beats')?.textContent || '4', 10),
+              beatType: parseInt(timeEl.querySelector('beat-type')?.textContent || '4', 10),
+            }
+          : undefined;
+      const keyEl = mEl.querySelector('attributes key');
+      const keyFifths = keyEl ? parseInt(keyEl.querySelector('fifths')?.textContent || '0', 10) : 0;
+      const localKey =
+        keyEl && mIdx > 0
+          ? keyEl.querySelector('mode')?.textContent?.trim() === 'minor'
+            ? FIFTHS_TO_MINOR_KEY[keyFifths]
+            : FIFTHS_TO_KEY[keyFifths]
+          : undefined;
+      const directions = Array.from(mEl.querySelectorAll('direction'));
+      const rehearsalMark =
+        directions
+          .find((d) => d.querySelector('rehearsal'))
+          ?.querySelector('rehearsal')
+          ?.textContent?.trim() || undefined;
+      const words = directions.flatMap((d) =>
+        Array.from(d.querySelectorAll('words')).map((w) => w.textContent?.trim() || '')
+      );
+      const tempoText = words.find((w) => !/^(D\.C\.|D\.S\.|To Coda|Fine)/i.test(w)) || undefined;
+      const localTempo = mEl.querySelector('sound[tempo]')?.getAttribute('tempo');
+      const metronomeEls = directions.flatMap((d) => Array.from(d.querySelectorAll('metronome')));
+      const markEl = metronomeEls.find((m) => m.querySelector('per-minute'));
+      const units = (m: Element) =>
+        Array.from(m.children).reduce<{ unit: MetronomeBeatUnit; dots: number }[]>(
+          (result, child) => {
+            if (child.tagName === 'beat-unit')
+              result.push({
+                unit: (XML_TYPE_TO_DURATION[child.textContent?.trim() || 'quarter'] ||
+                  'q') as MetronomeBeatUnit,
+                dots: 0,
+              });
+            else if (child.tagName === 'beat-unit-dot' && result.length)
+              result[result.length - 1].dots++;
+            return result;
+          },
+          []
+        );
+      const markUnits = markEl ? units(markEl) : [];
+      const metronomeMark =
+        markEl && markUnits[0]
+          ? {
+              beatUnit: markUnits[0].unit,
+              dots: markUnits[0].dots,
+              perMinute: Number(markEl.querySelector('per-minute')?.textContent),
+            }
+          : undefined;
+      const equivalenceEl = metronomeEls.find((m) => units(m).length === 2);
+      const eqUnits = equivalenceEl ? units(equivalenceEl) : [];
+      const metricEquivalence = equivalenceEl
+        ? {
+            previousUnit: eqUnits[0].unit,
+            previousDots: eqUnits[0].dots,
+            nextUnit: eqUnits[1].unit,
+            nextDots: eqUnits[1].dots,
+          }
+        : undefined;
+      const navigationDirection = directions.find((d) =>
+        d.querySelector('segno, coda, sound[dacapo], sound[dalsegno], sound[tocoda], sound[fine]')
+      );
+      const navWords = navigationDirection?.querySelector('words')?.textContent?.trim() || '';
+      const navSound = navigationDirection?.querySelector('sound');
+      const navigationMark = navigationDirection?.querySelector('segno')
+        ? 'segno'
+        : navigationDirection?.querySelector('coda')
+          ? 'coda'
+          : navSound?.hasAttribute('dalsegno')
+            ? /Coda/i.test(navWords)
+              ? 'dalSegnoAlCoda'
+              : 'dalSegno'
+            : navSound?.hasAttribute('dacapo')
+              ? /Fine/i.test(navWords)
+                ? 'daCapoAlFine'
+                : 'daCapo'
+              : navSound?.hasAttribute('tocoda')
+                ? 'toCoda'
+                : navSound?.hasAttribute('fine')
+                  ? 'fine'
+                  : undefined;
 
       return {
         measureNumber,
         isAnacrusis,
         repeatStart,
         repeatEnd,
+        repeatCount,
         volta,
         pageBreak,
         systemBreak,
         multimeasureRest,
+        localTime,
+        localKey,
+        rehearsalMark,
+        tempoText,
+        tempoBpm: localTempo && mIdx > 0 ? Number(localTempo) : undefined,
+        metronomeMark,
+        metricEquivalence,
+        meterGlyph: timeEl?.getAttribute('symbol') === 'common' ? ('common' as const) : undefined,
+        navigationMark: navigationMark as Measure['navigationMark'],
       };
     };
 
@@ -575,6 +793,7 @@ export function importMusicXmlToScore(xmlString: string): Score {
               ],
         repeatStart: mInfo.repeatStart ? true : undefined,
         repeatEnd: mInfo.repeatEnd ? true : undefined,
+        repeatCount: mInfo.repeatCount,
         volta: mInfo.volta,
         isAnacrusis: mInfo.isAnacrusis ? true : undefined,
         pickupBeats: mInfo.isAnacrusis && pickupBeats && pickupBeats > 0 ? pickupBeats : undefined,
@@ -582,6 +801,19 @@ export function importMusicXmlToScore(xmlString: string): Score {
         systemBreak: mInfo.systemBreak || undefined,
         multimeasureRest:
           mInfo.multimeasureRest && mInfo.multimeasureRest > 1 ? mInfo.multimeasureRest : undefined,
+        timeSignatureChange: mInfo.localTime,
+        keySignatureChange: mInfo.localKey,
+        rehearsalMark: mInfo.rehearsalMark,
+        tempoText: mInfo.tempoText,
+        tempoBpm: mInfo.tempoBpm,
+        metronomeMark: mInfo.metronomeMark,
+        metricEquivalence: mInfo.metricEquivalence,
+        meterGlyph: mInfo.meterGlyph,
+        navigationMark: mInfo.navigationMark,
+        printedNumber:
+          mInfo.measureNumber && Number.isFinite(Number(mInfo.measureNumber))
+            ? Number(mInfo.measureNumber)
+            : undefined,
       };
     };
 
@@ -708,14 +940,46 @@ export function importMusicXmlToScore(xmlString: string): Score {
         staves[1].clef === 'bass' &&
         /piano|teclado|mano/i.test(staves[0].name + staves[1].name));
 
+    for (const staff of staves) {
+      for (let i = 1; i < staff.measures.length; i++) {
+        if (staff.measures[i].pageBreak) {
+          staff.measures[i - 1].pageBreak = true;
+          delete staff.measures[i].pageBreak;
+        } else if (staff.measures[i].systemBreak) {
+          staff.measures[i - 1].systemBreak = true;
+          delete staff.measures[i].systemBreak;
+        }
+      }
+      const segno = staff.measures.filter((m) => m.navigationMark === 'segno');
+      const coda = staff.measures.filter((m) => m.navigationMark === 'coda');
+      const exit = staff.measures.filter((m) => m.navigationMark === 'toCoda');
+      for (const measure of staff.measures) {
+        if (
+          (measure.navigationMark === 'dalSegno' || measure.navigationMark === 'dalSegnoAlCoda') &&
+          segno.length === 1
+        )
+          measure.navigationTargetMeasureId = segno[0].id;
+        if (measure.navigationMark === 'dalSegnoAlCoda' && exit.length === 1)
+          measure.navigationExitMeasureId = exit[0].id;
+        if (measure.navigationMark === 'toCoda' && coda.length === 1)
+          measure.navigationTargetMeasureId = coda[0].id;
+      }
+    }
+
     return {
       id: `score-${Date.now()}`,
       title,
       composer,
+      arranger,
+      lyricist,
+      copyright,
+      meterGlyph: staves[0]?.measures[0]?.meterGlyph,
+      metronomeMark: staves[0]?.measures[0]?.metronomeMark,
       tempo,
       timeSignature: { beats, beatType },
       keySignature,
       staves,
+      partName: staves.length === 1 ? staves[0].name : undefined,
       isGrandStaff: isGrandStaff || undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -723,6 +987,17 @@ export function importMusicXmlToScore(xmlString: string): Score {
   }
 
   // Node.js / non-DOM regex-based parser fallback
+  if (
+    /<(?:metronome|rehearsal|segno|coda|rights|print)\b|<sound\b[^>]*(?:dalsegno|dacapo|tocoda|fine)=|<creator\s+type="(?:arranger|lyricist)"/i.test(
+      xmlString
+    ) ||
+    [...xmlString.matchAll(/<sound\b[^>]*tempo=/gi)].length > 1 ||
+    [...xmlString.matchAll(/<attributes\b[^>]*>[\s\S]*?<\/attributes>/gi)]
+      .slice(1)
+      .some((match) => /<(?:time|key)\b/.test(match[0]))
+  ) {
+    throw new Error('Este MusicXML requiere un parser XML con DOM para conservar sus indicaciones');
+  }
   const extractTag = (xml: string, tag: string) => {
     const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i').exec(xml);
     return m ? m[1].trim() : null;
@@ -809,6 +1084,8 @@ export function importMusicXmlToScore(xmlString: string): Score {
         isDotted,
         tuplet,
         lyric,
+        isFullMeasureRest,
+        articulation: /<fermata\b/i.test(noteXml) ? 'fermata' : undefined,
       });
       return;
     }

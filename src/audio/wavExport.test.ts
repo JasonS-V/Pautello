@@ -1,8 +1,60 @@
 import { describe, it, expect } from 'vitest';
-import { encodeWav, calculateScoreDuration } from './wavExport';
+import { encodeWav, calculateScoreDuration, renderScoreToWav } from './wavExport';
 import { Score } from '../types/music';
 
 describe('WAV Audio Export and RIFF Encoding', () => {
+  it('rejects cancellation and oversized work before reserving an offline buffer', async () => {
+    const score: Score = {
+      id: 'long',
+      title: 'Long',
+      composer: 'Test',
+      tempo: 120,
+      timeSignature: { beats: 4, beatType: 4 },
+      keySignature: 'C',
+      createdAt: 0,
+      updatedAt: 0,
+      staves: [
+        {
+          id: 's',
+          name: 'Part',
+          clef: 'treble',
+          measures: [
+            { id: 'm', multimeasureRest: 1000, items: [{ id: 'r', type: 'rest', duration: 'w' }] },
+          ],
+        },
+      ],
+    };
+    const controller = new AbortController();
+    controller.abort();
+    await expect(renderScoreToWav(score, 'piano', 0.8, controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await expect(renderScoreToWav(score)).rejects.toThrow('presupuesto de memoria');
+  });
+  it('uses performed repeats and local tempo to size the WAV timeline', () => {
+    const score: Score = {
+      id: 'route',
+      title: 'Ruta',
+      composer: 'Test',
+      tempo: 120,
+      timeSignature: { beats: 3, beatType: 4 },
+      keySignature: 'C',
+      createdAt: 0,
+      updatedAt: 0,
+      staves: [
+        {
+          id: 'staff',
+          name: 'Bajo',
+          clef: 'bass',
+          measures: [
+            { id: 'a', repeatStart: true, items: [] },
+            { id: 'b', repeatEnd: true, tempoBpm: 60, items: [] },
+          ],
+        },
+      ],
+    };
+    expect(calculateScoreDuration(score)).toBe(9);
+  });
   it('generates a valid RIFF WAVE header structure', () => {
     const sampleRate = 44100;
     const numSamples = 100;

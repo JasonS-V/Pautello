@@ -52,8 +52,21 @@ export function getMeasureTimings(score: Score): MeasureTiming[] {
       next.timeSignature = measure.timeSignatureChange;
       next.beatsPerMeasure = beatsFromTimeSignature(measure.timeSignatureChange);
     }
+    const unitBeats = (unit: 'w' | 'h' | 'q' | '8' | '16', dots: number) => {
+      const base = { w: 4, h: 2, q: 1, '8': 0.5, '16': 0.25 }[unit];
+      return base * (2 - 2 ** -dots);
+    };
     if (typeof measure.tempoBpm === 'number' && measure.tempoBpm > 0) {
       next.tempo = measure.tempoBpm;
+    } else if (measure.metronomeMark?.perMinute) {
+      next.tempo =
+        measure.metronomeMark.perMinute *
+        unitBeats(measure.metronomeMark.beatUnit, measure.metronomeMark.dots);
+    } else if (measure.metricEquivalence) {
+      const eq = measure.metricEquivalence;
+      next.tempo =
+        (current.tempo * unitBeats(eq.nextUnit, eq.nextDots)) /
+        unitBeats(eq.previousUnit, eq.previousDots);
     }
     if (measure.keySignatureChange) {
       next.keySignature = measure.keySignatureChange;

@@ -21,6 +21,11 @@ import {
   lineFragment,
 } from '../src/omr/omrDecode';
 import { convertOmrIrToScore } from '../src/omr/omrToScore';
+import { mapBox } from '../src/omr/omrGeometry';
+import { mergeStaffWindows } from '../src/omr/omrWindows';
+import { withNotationEvidence } from '../src/omr/omrNotationGeometry';
+import { assignPartIdentities } from '../src/omr/omrParts';
+import type { OmrDecodedLine } from '../src/omr/omrDecode';
 import {
   type OmrModelManifest,
   verifyModelOutputCompatibility,
@@ -36,6 +41,7 @@ const input = option('--input');
 const output = option('--out');
 const variant = option('--variant') ?? 'fp32';
 const poppler = option('--poppler') ?? 'pdftoppm';
+const maxWidth = Number(option('--max-width') ?? MAX_WIDTH);
 if (!input || !output || !['fp32', 'int8'].includes(variant)) {
   throw new Error(
     'Uso: pnpm omr:benchmark --input archivo.pdf|png|jpg|jpeg|webp|svg --out carpeta-nueva [--variant fp32|int8] [--poppler ruta]'
@@ -56,6 +62,11 @@ const codePaths = [
   'scripts/omr-benchmark.ts',
   'scripts/omr-benchmark-input.ts',
   'src/omr/omrPreprocess.ts',
+  'src/omr/omrGeometry.ts',
+  'src/omr/omrContrast.ts',
+  'src/omr/omrParts.ts',
+  'src/omr/omrWindows.ts',
+  'src/omr/omrNotationGeometry.ts',
   'src/omr/omrDecode.ts',
   'src/omr/omrModelContract.ts',
   'src/omr/omrToScore.ts',
@@ -132,11 +143,11 @@ const manifest = {
         inkThreshold: INK_THRESHOLD,
         targetSpacing: TARGET_SPACING,
         targetHeight: TARGET_HEIGHT,
-        maxWidth: MAX_WIDTH,
+        maxWidth,
         deskew: true,
         rasterDpi: source.format === 'pdf' ? 172.8 : null,
         rasterizer: source.rasterizer,
-        smallImageScale: source.format === 'pdf' ? null : { belowWidth: 1400, factor: 2 },
+        smallImageScale: null,
       },
   irVersion: IR_VERSION,
   runtime: nativeScore
@@ -178,7 +189,7 @@ if (nativeScore) {
       graphOptimizationLevel: 'all',
     });
     const modelLoadMs = now() - loadStart;
-    const lines = [];
+    const lines: OmrDecodedLine[] = [];
     const decodedLines = [];
     const pages = [];
     try {
@@ -187,9 +198,10 @@ if (nativeScore) {
         const raster = await source.rasterize(pageNumber, temp);
         const rasterMs = now() - rasterStart;
         const preprocessStart = now();
-        const prepared = preprocessPage(raster.gray, raster.width, raster.height);
+        const prepared = preprocessPage(raster.gray, raster.width, raster.height, { maxWidth });
         const preprocessMs = now() - preprocessStart;
         const lineStats = [];
+        const staffWindows = new Map<number, OmrDecodedLine[]>();
         for (const staffInput of prepared.inputs) {
           const inferenceStart = now();
           const tensor = new ort.Tensor('float32', staffInput.data, [
@@ -221,18 +233,30 @@ if (nativeScore) {
             page: pageNumber,
             system: staffInput.box.system,
             staffIndex: staffInput.box.voice,
-            bbox: [staffInput.box.x, staffInput.box.y, staffInput.box.w, staffInput.box.h] as [
-              number,
-              number,
-              number,
-              number,
-            ],
+            bbox: mapBox(prepared.processedToOriginal, [
+              staffInput.box.x,
+              staffInput.box.y,
+              staffInput.box.w,
+              staffInput.box.h,
+            ]),
             lineSpacingPx: staffInput.box.lineSpacing,
             normSpacing: TARGET_SPACING,
             truncated: staffInput.truncated,
+            window: staffInput.window,
+            normalizedToOriginal: staffInput.normalizedToOriginal,
           };
           const elements = lineFragment(tokens, staff);
-          lines.push({ staff, elements });
+          const windows = staffWindows.get(staffInput.box.staff) ?? [];
+          windows.push(
+            withNotationEvidence(
+              staffInput.data,
+              staffInput.width,
+              staffInput.height,
+              staff,
+              elements
+            )
+          );
+          staffWindows.set(staffInput.box.staff, windows);
           decodedLines.push({ staff, tokens });
           lineStats.push({
             system: staff.system,
@@ -247,6 +271,7 @@ if (nativeScore) {
             decodeMs: now() - decodeStart,
           });
         }
+        for (const windows of staffWindows.values()) lines.push(mergeStaffWindows(windows));
         pages.push({
           page: pageNumber,
           raster: [raster.width, raster.height],
@@ -260,6 +285,11 @@ if (nativeScore) {
           systems: prepared.systems.length,
           staves: prepared.boxes.length,
           boxes: prepared.boxes,
+          contrast: prepared.contrast,
+          orientation: prepared.orientation,
+          originalToProcessed: prepared.originalToProcessed,
+          regions: prepared.regions,
+          masks: prepared.masks,
           lineStats,
         });
       }
@@ -274,7 +304,7 @@ if (nativeScore) {
     const modelWarmLoadMs = now() - warmLoadStart;
     await warmSession.release();
     const assembleStart = now();
-    const ir = assembleIR(lines);
+    const ir = assembleIR(assignPartIdentities(lines));
     const assembleMs = now() - assembleStart;
     const convertStart = now();
     const converted = convertOmrIrToScore(ir, {

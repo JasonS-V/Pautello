@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ImportModal } from '../ImportModal';
 import { OmrReviewPanel } from '../OmrReviewPanel';
@@ -6,8 +6,13 @@ import { recognizeScoreFromFile } from '../../../omr/omrEngine';
 import { Score } from '../../../types/music';
 import { assembleIR, lineFragment } from '../../../omr/omrDecode';
 import { convertOmrIrToScore } from '../../../omr/omrToScore';
+import { loadOmrDraft, saveOmrDraft } from '../../../omr/omrDraftPersistence';
 
 vi.mock('../../../omr/omrEngine', () => ({ recognizeScoreFromFile: vi.fn() }));
+vi.mock('../../../omr/omrDraftPersistence', () => ({
+  loadOmrDraft: vi.fn().mockResolvedValue(null),
+  saveOmrDraft: vi.fn().mockResolvedValue(undefined),
+}));
 
 const score: Score = {
   id: 'score-1',
@@ -41,6 +46,111 @@ const score: Score = {
 };
 
 describe('ImportModal: avisos OMR', () => {
+  beforeEach(() => {
+    vi.mocked(loadOmrDraft).mockResolvedValue(null);
+    vi.mocked(saveOmrDraft).mockResolvedValue(undefined);
+  });
+  it('envía el rango elegido al lector PDF', async () => {
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score,
+      confidence: 100,
+      pagesProcessed: 2,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'lossless-metadata',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+    });
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Páginas del PDF/), { target: { value: '3-4' } });
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['%PDF-1.7'], 'prueba.pdf')] },
+    });
+    await waitFor(() => expect(recognizeScoreFromFile).toHaveBeenCalled());
+    expect(vi.mocked(recognizeScoreFromFile).mock.lastCall?.[2]).toEqual(
+      expect.objectContaining({ pdfPageRange: '3-4', signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it('envía el giro explícito de 180° antes de reconocer', async () => {
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score,
+      confidence: 100,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'lossless-metadata',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+    });
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Orientación de la imagen o PDF' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Girar 180°' }));
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['%PDF-1.7'], 'girado.pdf')] },
+    });
+    await waitFor(() =>
+      expect(vi.mocked(recognizeScoreFromFile).mock.lastCall?.[2]).toEqual(
+        expect.objectContaining({
+          pdfPageRange: '',
+          rotation: 180,
+          signal: expect.any(AbortSignal),
+        })
+      )
+    );
+  });
+
+  it('cancela una lectura tardía sin reemplazar el documento y permite reintentar', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof recognizeScoreFromFile>>) => void;
+    vi.mocked(recognizeScoreFromFile)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          })
+      )
+      .mockResolvedValueOnce({
+        score,
+        confidence: 100,
+        pagesProcessed: 1,
+        stavesDetected: 1,
+        measuresDetected: 1,
+        notesDetected: 1,
+        sourceType: 'lossless-metadata',
+        ir: null,
+        sourceLinks: [],
+        warnings: [],
+      });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    const input = screen.getByLabelText('Seleccionar archivo a importar');
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.7'], 'primero.pdf')] } });
+    await screen.findByRole('button', { name: 'Cancelar importación' });
+    const signal = vi.mocked(recognizeScoreFromFile).mock.lastCall?.[2]?.signal;
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar importación' }));
+    expect(signal?.aborted).toBe(true);
+    finish({
+      score,
+      confidence: 100,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'lossless-metadata',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+    });
+    expect(onImportScore).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.7'], 'segundo.pdf')] } });
+    await screen.findByText('Prueba de lectura');
+    expect(recognizeScoreFromFile).toHaveBeenCalledTimes(2);
+  });
+
   it('mantiene el contexto de una región dentro de los límites de la página', () => {
     render(
       <OmrReviewPanel
@@ -138,6 +248,52 @@ describe('ImportModal: avisos OMR', () => {
     );
   });
 
+  it('permite corregir roles editoriales antes de confirmar y conserva el arreglista en la sesión', async () => {
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score: { ...score, partName: 'Bajo' },
+      confidence: 72,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'neural-onnx',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+      metadataHints: { arranger: 'Jeff Nevis' },
+      editorial: {
+        proposals: [
+          {
+            field: 'arranger',
+            value: 'Jeff Nevis',
+            confidence: 0.92,
+            source: { page: 1, bbox: [50, 40, 90, 15] },
+          },
+        ],
+        unclassified: [],
+      },
+    });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['x'], 'partitura.png')] },
+    });
+    fireEvent.change(await screen.findByLabelText(/^Título/), { target: { value: 'El Rey' } });
+    fireEvent.change(screen.getByLabelText(/^Compositor/), {
+      target: { value: 'José Alfredo Jiménez' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Arreglista/), { target: { value: 'Jeff Nevin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cargar en el Editor' }));
+    await waitFor(() => expect(onImportScore).toHaveBeenCalled());
+    expect(onImportScore.mock.calls[0][0]).toMatchObject({
+      title: 'El Rey',
+      composer: 'José Alfredo Jiménez',
+      partName: 'Bajo',
+      arranger: 'Jeff Nevin',
+    });
+    expect(onImportScore.mock.calls[0][1].metadataHints.arranger).toBe('Jeff Nevin');
+  });
+
   it('solo divide compases con aceptación y conserva la sesión al confirmar', async () => {
     const staff = {
       page: 1,
@@ -195,6 +351,7 @@ describe('ImportModal: avisos OMR', () => {
     expect(accept).not.toBeChecked();
     fireEvent.click(accept);
     fireEvent.click(screen.getByRole('button', { name: 'Cargar en el Editor' }));
+    await waitFor(() => expect(onImportScore).toHaveBeenCalled());
     expect(onImportScore.mock.calls[0][0].staves[0].measures).toHaveLength(2);
     expect(onImportScore.mock.calls[0][1].ir).toEqual(ir);
     expect(
@@ -202,6 +359,121 @@ describe('ImportModal: avisos OMR', () => {
         (link: { measureId: string | null }) => link.measureId !== null
       )
     ).toBe(true);
+  });
+
+  it('mantiene el documento abierto cuando falla el guardado del borrador', async () => {
+    vi.mocked(saveOmrDraft).mockRejectedValueOnce(new Error('Cuota llena'));
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score,
+      confidence: 70,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 1,
+      notesDetected: 1,
+      sourceType: 'neural-onnx',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+    });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['x'], 'partitura.png')] },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Cargar en el Editor' }));
+    await screen.findByRole('alert');
+    expect(onImportScore).not.toHaveBeenCalled();
+    vi.mocked(saveOmrDraft).mockResolvedValue(undefined);
+  });
+
+  it('corrige solo el compás elegido, deshace la corrección y guarda el borrador separado', async () => {
+    const twoMeasures: Score = {
+      ...score,
+      staves: [
+        {
+          ...score.staves[0],
+          measures: [
+            score.staves[0].measures[0],
+            {
+              id: 'measure-2',
+              items: [
+                {
+                  id: 'note-2',
+                  type: 'note',
+                  pitch: { step: 'D', octave: 3, accidental: null },
+                  duration: 'q',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(recognizeScoreFromFile).mockResolvedValue({
+      score: twoMeasures,
+      confidence: 70,
+      pagesProcessed: 1,
+      stavesDetected: 1,
+      measuresDetected: 2,
+      notesDetected: 2,
+      sourceType: 'neural-onnx',
+      ir: null,
+      sourceLinks: [],
+      warnings: [],
+    });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    fireEvent.change(screen.getByLabelText('Seleccionar archivo a importar'), {
+      target: { files: [new File(['x'], 'partitura.png')] },
+    });
+    const duration = await screen.findByLabelText('Figura del evento');
+    fireEvent.change(duration, { target: { value: 'h' } });
+    expect(screen.getByLabelText('Figura del evento')).toHaveValue('h');
+    fireEvent.click(screen.getByRole('button', { name: 'Deshacer corrección' }));
+    expect(screen.getByLabelText('Figura del evento')).toHaveValue('q');
+    fireEvent.click(screen.getByRole('button', { name: 'Rehacer corrección' }));
+    expect(screen.getByLabelText('Figura del evento')).toHaveValue('h');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar borrador' }));
+    await waitFor(() =>
+      expect(
+        vi.mocked(saveOmrDraft).mock.lastCall?.[0].score.staves[0].measures[0].items[0].duration
+      ).toBe('h')
+    );
+    expect(
+      vi.mocked(saveOmrDraft).mock.lastCall?.[0].score.staves[0].measures[1].items[0].duration
+    ).toBe('q');
+    expect(onImportScore).not.toHaveBeenCalled();
+  });
+
+  it('recupera un borrador sin reemplazar la partitura abierta', async () => {
+    vi.mocked(loadOmrDraft).mockResolvedValueOnce({
+      version: 1,
+      savedAt: 1,
+      score,
+      result: {
+        score,
+        confidence: 70,
+        pagesProcessed: 1,
+        stavesDetected: 1,
+        measuresDetected: 1,
+        notesDetected: 1,
+        sourceType: 'neural-onnx',
+        ir: null,
+        sourceLinks: [],
+        warnings: [],
+      },
+      acceptedMeasureIds: [],
+      acceptedIndicationIds: [],
+      rejectedIndicationIds: [],
+      reviewedWarningIds: [],
+      reviewedMeasureIds: [],
+      manualEditMeasureIds: [],
+    });
+    const onImportScore = vi.fn();
+    render(<ImportModal isOpen onClose={vi.fn()} onImportScore={onImportScore} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Continuar borrador OMR guardado/ }));
+    expect(screen.getByLabelText('Figura del evento')).toHaveValue('q');
+    expect(onImportScore).not.toHaveBeenCalled();
   });
 
   it('respeta duración y armadura al cambiar la métrica y regresar', async () => {

@@ -4,8 +4,10 @@
  */
 
 import { Step } from '../types/music';
+import { mapBox, type Transform } from './omrGeometry';
+import type { NotationEvidence } from './omrNotationGeometry';
 
-export const IR_VERSION = '1.4';
+export const IR_VERSION = '1.5';
 export const WIDTH_REDUCTION = 4;
 export const DIV_WHOLE = 192;
 
@@ -47,6 +49,11 @@ export interface OmrStaffMeta {
   lineSpacingPx: number;
   normSpacing: number;
   truncated?: boolean;
+  window?: { index: number; start: number; end: number; fullWidth: number; contextPrefix?: number };
+  normalizedToOriginal?: Transform;
+  partIndex?: number;
+  assignmentAmbiguous?: boolean;
+  partLabel?: string;
 }
 
 export interface OmrDurationIR {
@@ -78,6 +85,8 @@ export interface OmrSourceSpan {
   system: number;
   staff: number;
   bbox: [number, number, number, number];
+  normalizedRange?: [number, number];
+  windowIndex?: number;
 }
 
 export type OmrElementIR =
@@ -119,6 +128,9 @@ export type OmrElementIR =
 export interface OmrDecodedLine {
   staff: OmrStaffMeta;
   elements: OmrElementIR[];
+  warnings?: OmrWarning[];
+  notationEvidence?: NotationEvidence[];
+  hypotheses?: Array<{ staff: OmrStaffMeta; elements: OmrElementIR[] }>;
 }
 
 export interface OmrMeasureIR {
@@ -163,6 +175,7 @@ export interface OmrWarning {
 
 export interface OmrScoreIR {
   irVersion: string;
+  indications?: import('./omrIndications').OmrIndication[];
   lines?: OmrDecodedLine[];
   structure: {
     recognized: {
@@ -407,6 +420,14 @@ function bboxOf(record: OmrTokenEvent[], staff: OmrStaffMeta): [number, number, 
     if (ev.f1 > f1) f1 = ev.f1;
   }
   const scale = staff.lineSpacingPx / staff.normSpacing;
+  if (staff.normalizedToOriginal) {
+    return mapBox(staff.normalizedToOriginal, [
+      WIDTH_REDUCTION * f0,
+      0,
+      WIDTH_REDUCTION * (f1 + 1 - f0),
+      128,
+    ]).map((v) => roundPy(v, 1)) as [number, number, number, number];
+  }
   const x0 = staff.bbox[0] + WIDTH_REDUCTION * f0 * scale;
   const x1 = staff.bbox[0] + WIDTH_REDUCTION * (f1 + 1) * scale;
   return [roundPy(x0, 1), staff.bbox[1], roundPy(x1 - x0, 1), staff.bbox[3]];
@@ -415,14 +436,42 @@ function bboxOf(record: OmrTokenEvent[], staff: OmrStaffMeta): [number, number, 
 export function lineFragment(tokenEvents: OmrTokenEvent[], staff: OmrStaffMeta): OmrElementIR[] {
   const out: OmrElementIR[] = [];
   for (const record of splitRecords(tokenEvents)) {
-    const el = classify(record);
+    const frameStart = Math.min(...record.map((e) => e.f0)) * WIDTH_REDUCTION;
+    const frameEnd = (Math.max(...record.map((e) => e.f1)) + 1) * WIDTH_REDUCTION;
+    const prefix = staff.window?.contextPrefix ?? 0;
+    if (prefix && frameEnd <= prefix) continue;
+    let el = classify(record);
     if (el === null) continue;
+    if (prefix && frameStart < prefix && frameEnd > prefix)
+      el = {
+        kind: 'unparseable',
+        tokens: record.map((event) => event.token),
+        confidence: Math.min(...record.map((event) => event.confidence)),
+      };
     el.tokens = record.map((ev) => ev.token);
     el.src = {
       page: staff.page,
       system: staff.system,
       staff: staff.staffIndex,
-      bbox: bboxOf(record, staff),
+      bbox: bboxOf(
+        prefix && frameStart < prefix
+          ? record.map((event) => ({
+              ...event,
+              f0: Math.max(event.f0, prefix / WIDTH_REDUCTION),
+              f1: Math.max(event.f1, prefix / WIDTH_REDUCTION),
+            }))
+          : record,
+        staff
+      ),
+      ...(staff.window
+        ? {
+            normalizedRange: [
+              staff.window.start + Math.max(frameStart, prefix) - prefix,
+              staff.window.start + frameEnd - prefix,
+            ] as [number, number],
+            windowIndex: staff.window.index,
+          }
+        : {}),
     };
     out.push(el);
   }
@@ -451,9 +500,12 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     counts.set(key, Math.max(counts.get(key) ?? 0, s.staffIndex + 1));
   }
   const expectedCount = counts.size ? modal([...counts.values()]) : 0;
-  const m = counts.size ? Math.max(...counts.values()) : 0;
+  const maxStavesPerSystem = counts.size ? Math.max(...counts.values()) : 0;
+  const m = counts.size
+    ? Math.max(...lines.map((ln) => (ln.staff.partIndex ?? ln.staff.staffIndex) + 1))
+    : 0;
 
-  const warnings: OmrWarning[] = [];
+  const warnings: OmrWarning[] = lines.flatMap((ln) => ln.warnings ?? []);
   const keys = [...counts.keys()].sort((a, b) => {
     const [pa, sa] = a.split('/').map(Number);
     const [pb, sb] = b.split('/').map(Number);
@@ -463,7 +515,7 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
   for (const key of keys) {
     const [page, sysno] = key.split('/').map(Number);
     const n = counts.get(key) ?? 0;
-    if (n !== expectedCount || m !== expectedCount) {
+    if (n !== expectedCount || maxStavesPerSystem !== expectedCount) {
       warnings.push({
         code: 'staff-assignment-uncertain',
         severity: 'warning',
@@ -479,7 +531,14 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
 
   const parts: OmrPartIR[] = [];
   for (let i = 0; i < m; i++) {
-    parts.push({ index: i, label: null, measures: [] });
+    parts.push({
+      index: i,
+      label:
+        lines.find(
+          (line) => (line.staff.partIndex ?? line.staff.staffIndex) === i && line.staff.partLabel
+        )?.staff.partLabel ?? null,
+      measures: [],
+    });
   }
   const openMeasures: Array<OmrMeasureIR | null> = new Array(m).fill(null);
   const clefVotes: Array<Map<string, number>> = Array.from(
@@ -487,7 +546,7 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
     () => new Map<string, number>()
   );
   const structure = {
-    stavesPerSystem: m,
+    stavesPerSystem: maxStavesPerSystem,
     clefs: new Array<string | null>(m).fill(null),
     keyFifths: null as number | null,
     time: null as OmrTimeIR | null,
@@ -513,7 +572,7 @@ export function assembleIR(lines: OmrDecodedLine[]): OmrScoreIR {
       a.staff.staffIndex - b.staff.staffIndex
   )) {
     const st = ln.staff;
-    const p = st.staffIndex;
+    const p = st.partIndex ?? st.staffIndex;
     if (st.truncated) {
       warnings.push({
         code: 'line-truncated',

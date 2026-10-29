@@ -540,6 +540,8 @@ La lista operativa de tareas está en [todo.md](todo.md). Los IDs de abajo son e
 
 **Puerta F3:** motor/configuración elegidos por exactitud y coste de revisión. Si falla la meta, se publica el límite y se mantiene reconocimiento asistido; no se compensa añadiendo excepciones por título o nombre de obra.
 
+**Estado al 28 de octubre de 2026:** fase de evaluación y decisión completada; evidencia en [omr-recognition.md](omr-recognition.md) y [omr-recognition-results.json](omr-recognition-results.json), checklist en [todo.md](todo.md). Se conserva FP32/voraz asistido y la configuración F2, con avisos geométricos. Audiveris se mantiene como intercambio externo MusicXML; F3.6 no se activa. La meta de exactitud automática no se alcanza y las fases F4–F9 siguen pendientes.
+
 ### F4. Reconocer indicaciones y metadatos de la página
 
 **Resultado de fase:** la música reconocida incluye las instrucciones necesarias para interpretar la obra, no únicamente alturas y figuras.
@@ -688,6 +690,8 @@ La lista operativa de tareas está en [todo.md](todo.md). Los IDs de abajo son e
 
 **Puerta F5:** se puede obtener una partitura confirmada comparando con el PDF, guardar decisiones y continuar después. La versión automática y la revisada son distinguibles.
 
+**Estado al 28 de octubre de 2026:** F5 implementada y verificada como flujo de revisión asistida; detalle, pruebas y límites en [omr-domain-review.md](omr-domain-review.md). El esquema 2 conserva indicaciones locales; los anclajes dudosos requieren aceptación explícita. La sesión OMR y la fuente se guardan localmente y la confirmación entra en el historial del editor. La exactitud automática de El Rey sigue siendo insuficiente; la semántica de grabado, MusicXML y audio corresponde a F6.
+
 ### F6. Conservar la música en grabado, intercambio y audio
 
 **Resultado de fase:** la partitura confirmada mantiene el mismo contenido al imprimirla, intercambiarla y escucharla.
@@ -779,6 +783,8 @@ La lista operativa de tareas está en [todo.md](todo.md). Los IDs de abajo son e
 
 **Puerta F6:** JSON conserva todo; MusicXML cumple esquema y round-trip del subconjunto declarado; partitura, player, MIDI y WAV usan la semántica acordada. La impresión se revisa visualmente.
 
+**Estado al 29 de octubre de 2026:** F6.1–F6.7 implementadas y comprobadas con 491 pruebas, build, XSD MusicXML 4.0, descargas reales en Edge y revisión visual de los siete sistemas en PDF Carta/A4. El detalle y los límites están en [omr-exchange-audio.md](omr-exchange-audio.md). La puerta permanece abierta hasta abrir el MusicXML en un editor externo y escuchar el salto D.S. al Coda junto con el WAV.
+
 ### F7. Hacer el proceso utilizable y realmente local
 
 **Resultado de fase:** importaciones cancelables y recuperables, memoria acotada y recursos preparados para trabajar sin red.
@@ -832,6 +838,8 @@ La lista operativa de tareas está en [todo.md](todo.md). Los IDs de abajo son e
 **Aceptación:** un error de FP32 no deja una promesa fallida permanente ni una importación mezclada; los modelos se comparan con resultados reales. **Verificación:** fallos inyectados y matriz de plataformas. **Dependencias:** F3.1, F7.1–F7.3. **Archivos:** carga/runtime OMR, configuración y tests. **Tamaño:** M.
 
 **Puerta F7:** cancelar/reintentar funciona; presupuesto de memoria medido; la afirmación offline se valida en primera importación preparada y en una actualización.
+
+**Estado al 29 de octubre de 2026:** F7.1–F7.4 implementadas y Puerta F7 cerrada: [informe](omr-execution-offline.md). Cálculo desacoplado en Web Worker dedicado con cancelación interactiva vía AbortSignal y reinicio limpio sin alterar la partitura abierta. Procesamiento secuencial página por página con liberación inmediata de tensores Float32 y lienzos, acotando el pico de memoria (<25 MiB activa) y presupuesto de 60 Mpx verificado. 11 recursos OMR versionados por SHA-256 en Service Worker independiente (pautello-omr-v*); Edge verificó importación neuronal 100 % sin red (context.setOffline(true)). ONNX Runtime Web WASM con 1 hilo y fallback automático a INT8 con reinicio seguro ante fallos en inferencia. Suite de 505 pruebas en 68 archivos, build y lint aprobados.
 
 ### F8. Aumentar cobertura sin perder control
 

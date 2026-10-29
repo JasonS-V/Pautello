@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import type { Score } from '../src/types/music';
 import { grayFromBytes, rgbaToGray } from '../src/omr/omrPreprocess';
+import { checkPixelBudget } from '../src/omr/omrInput';
 import { decodeScorePayloadFromText, extractScoreFromPngBytes } from '../src/omr/scorePayloadCodec';
 
 const require = createRequire(import.meta.url);
@@ -129,9 +130,9 @@ export async function openBenchmarkInput(
       // Reutiliza el decodificador opcional instalado por PDF.js; no añade otra dependencia.
       const { createCanvas, loadImage } = pdfRequire('@napi-rs/canvas');
       const image = await loadImage(bytes);
-      const scale = image.width < 1400 ? 2 : 1;
-      const width = Math.round(image.width * scale);
-      const height = Math.round(image.height * scale);
+      const width = image.width;
+      const height = image.height;
+      checkPixelBudget(width, height);
       const canvas = createCanvas(width, height);
       const context = canvas.getContext('2d');
       context.fillStyle = '#ffffff';

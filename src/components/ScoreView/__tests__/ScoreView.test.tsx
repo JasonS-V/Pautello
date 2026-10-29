@@ -59,6 +59,55 @@ const mockPlaybackState = {
 };
 
 describe('ScoreView Component', () => {
+  it('draws local indications and a fermata rest in source layout without editing events', () => {
+    const score: Score = {
+      ...mockScore,
+      staves: [
+        {
+          ...mockScore.staves[0],
+          measures: [
+            { ...mockScore.staves[0].measures[0], systemBreak: true },
+            {
+              ...mockScore.staves[0].measures[1],
+              timeSignatureChange: { beats: 4, beatType: 4 },
+              meterGlyph: 'common',
+              metronomeMark: { beatUnit: 'h', dots: 0, perMinute: 60 },
+              metricEquivalence: { previousUnit: '8', previousDots: 0, nextUnit: 'q', nextDots: 0 },
+              rehearsalMark: 'B',
+              navigationMark: 'segno',
+              printedNumber: 12,
+              items: [{ id: 'rest-fermata', type: 'rest', duration: 'q', articulation: 'fermata' }],
+            },
+          ],
+        },
+      ],
+    };
+    const itemsBefore = JSON.stringify(score.staves[0].measures.map((m) => m.items));
+    const { container } = render(
+      <ScoreView
+        score={score}
+        selectedItemId={null}
+        selectedMeasureIdx={0}
+        onSelectItem={vi.fn()}
+        onInsertNoteAt={vi.fn()}
+        onInsertRestAt={vi.fn()}
+        onDeleteMeasure={vi.fn()}
+        activeDuration="q"
+        activeAccidental={null}
+        isRestMode={false}
+        namingConvention="latin"
+        showNoteNames={false}
+        playbackState={mockPlaybackState}
+        measuresPerSystem={0}
+      />
+    );
+    expect(screen.getByText('𝅗𝅥 = 60')).toBeInTheDocument();
+    expect(screen.getByText('♪ = ♩')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(container.querySelector('.rest-fermata')).toBeInTheDocument();
+    expect(container.querySelectorAll('.system-container')).toHaveLength(2);
+    expect(JSON.stringify(score.staves[0].measures.map((m) => m.items))).toBe(itemsBefore);
+  });
   it('renderiza la cabecera en modo continuo con el título y compositor', () => {
     const onSelectItem = vi.fn();
     const onInsertNoteAt = vi.fn();

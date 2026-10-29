@@ -1,82 +1,7 @@
-import { Score, Staff, getItemPitches, isPianoGrandStaff } from '../types/music';
+import { Score, isPianoGrandStaff } from '../types/music';
 import { InstrumentType, resolveStaffInstrument } from './synth';
-import { getItemBeats, pitchToFrequency } from '../constants/pitches';
-import { getMeasureItemStreamTimings, resolveMeasureCapacity } from '../utils/measureTiming';
-
-function getTiedSecs(
-  staff: Staff,
-  measureIdx: number,
-  itemIdx: number,
-  secondsPerBeat: number
-): number {
-  let totalSec = 0;
-  let m = measureIdx;
-  let i = itemIdx;
-  const currentItem = staff.measures[m]?.items[i];
-  if (!currentItem) return 0;
-  const targetVoice = currentItem.voice || 1;
-
-  while (m < staff.measures.length) {
-    const cur = staff.measures[m]?.items[i];
-    if (!cur) break;
-    const b = getItemBeats(cur.duration, cur.isDotted, cur.tuplet);
-    totalSec += b * secondsPerBeat;
-
-    if (!cur.isTied) break;
-
-    let nextIdx = -1;
-    for (let k = i + 1; k < staff.measures[m].items.length; k++) {
-      if ((staff.measures[m].items[k].voice || 1) === targetVoice) {
-        nextIdx = k;
-        break;
-      }
-    }
-
-    if (nextIdx !== -1) {
-      i = nextIdx;
-    } else {
-      m++;
-      if (m >= staff.measures.length) break;
-      const nextMeas = staff.measures[m];
-      const firstSameVoiceIdx = nextMeas.items.findIndex((it) => (it.voice || 1) === targetVoice);
-      if (firstSameVoiceIdx !== -1) {
-        i = firstSameVoiceIdx;
-      } else {
-        break;
-      }
-    }
-  }
-
-  return totalSec;
-}
-
-function isTiedFromPrev(staff: Staff, measureIdx: number, itemIdx: number): boolean {
-  const currentMeasure = staff.measures[measureIdx];
-  if (!currentMeasure) return false;
-  const currentItem = currentMeasure.items[itemIdx];
-  if (!currentItem) return false;
-  const targetVoice = currentItem.voice || 1;
-
-  for (let i = itemIdx - 1; i >= 0; i--) {
-    const it = currentMeasure.items[i];
-    if ((it.voice || 1) === targetVoice) {
-      return !!it.isTied;
-    }
-  }
-
-  if (measureIdx > 0) {
-    const prevMeasure = staff.measures[measureIdx - 1];
-    if (prevMeasure && prevMeasure.items.length > 0) {
-      for (let i = prevMeasure.items.length - 1; i >= 0; i--) {
-        const it = prevMeasure.items[i];
-        if ((it.voice || 1) === targetVoice) {
-          return !!it.isTied;
-        }
-      }
-    }
-  }
-  return false;
-}
+import { midiToFrequency } from '../constants/pitches';
+import { buildPlaybackPlan, collectPerformedNotes } from './playbackPlan';
 
 /**
  * Encodes audio channel data (Float32Array) to a 16-bit PCM RIFF WAVE Uint8Array
@@ -137,19 +62,7 @@ export function encodeWav(channels: Float32Array[], sampleRate: number): Uint8Ar
  * Calculates total duration in seconds for a score given its tempo and meter
  */
 export function calculateScoreDuration(score: Score): number {
-  const staff = score.staves[0];
-  if (!staff || staff.measures.length === 0 || score.tempo <= 0) return 0;
-
-  const secondsPerBeat = 60 / Math.max(30, Math.min(300, score.tempo));
-
-  let totalBeats = 0;
-  for (let mIdx = 0; mIdx < staff.measures.length; mIdx++) {
-    const measure = staff.measures[mIdx];
-    const measCapacity = resolveMeasureCapacity(score, measure, mIdx);
-    totalBeats += measCapacity;
-  }
-
-  return totalBeats * secondsPerBeat;
+  return buildPlaybackPlan(score).durationSeconds;
 }
 
 /**
@@ -279,12 +192,34 @@ function scheduleOfflineNote(
 export async function renderScoreToWav(
   score: Score,
   instrument: InstrumentType = 'piano',
-  volume: number = 0.8
+  volume: number = 0.8,
+  signal?: AbortSignal
 ): Promise<Blob> {
+  if (signal?.aborted) throw new DOMException('Exportación cancelada', 'AbortError');
   const sampleRate = 44100;
-  const duration = calculateScoreDuration(score);
-  const totalDuration = Math.max(1.0, duration + 1.2); // Tail for release/reverb
+  const plan = buildPlaybackPlan(score);
+  if (plan.diagnostics.length) throw new Error(plan.diagnostics.join('; '));
+  const notes = collectPerformedNotes(score, plan);
+  const soundEnd = notes.reduce((latest, note) => {
+    const factor =
+      note.item.articulation === 'staccato'
+        ? 0.45
+        : note.item.articulation === 'fermata'
+          ? 1.8
+          : note.item.articulation === 'tenuto'
+            ? 1
+            : 0.96;
+    return Math.max(
+      latest,
+      note.startSeconds + (note.endSeconds - note.startSeconds) * factor + 0.5
+    );
+  }, 0);
+  const totalDuration = Math.max(1.0, plan.durationSeconds + 0.2, soundEnd + 0.05);
   const totalSamples = Math.ceil(totalDuration * sampleRate);
+  // Offline float channels and the encoded stereo PCM buffer coexist during export.
+  if (totalSamples * (2 * 4 + 2 * 2) > 256 * 1024 * 1024) {
+    throw new Error('El WAV excede el presupuesto de memoria de 256 MiB');
+  }
 
   // Check if OfflineAudioContext is available in current environment
   const OfflineCtxClass =
@@ -295,86 +230,58 @@ export async function renderScoreToWav(
       : null;
 
   if (!OfflineCtxClass) {
-    // Fallback simple silence / dummy buffer if Web Audio not available
-    const dummyChannels = [new Float32Array(sampleRate), new Float32Array(sampleRate)];
-    const wavBytes = encodeWav(dummyChannels, sampleRate);
-    return new Blob([wavBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
+    throw new Error('La exportación WAV requiere OfflineAudioContext');
   }
 
+  if (signal?.aborted) throw new DOMException('Exportación cancelada', 'AbortError');
   const offlineCtx = new OfflineCtxClass(2, totalSamples, sampleRate);
 
   const masterGain = offlineCtx.createGain();
   masterGain.gain.setValueAtTime(Math.max(0.1, Math.min(1.0, volume)), 0);
   masterGain.connect(offlineCtx.destination);
 
-  const secondsPerBeat = 60 / Math.max(30, Math.min(300, score.tempo));
   const isGrand = isPianoGrandStaff(score);
-  for (const staff of score.staves) {
-    const staffInstrument = resolveStaffInstrument(staff, isGrand, instrument);
-    let currentMeasureTime = 0.05; // 50ms initial silence for clean attack
-    for (let mIdx = 0; mIdx < staff.measures.length; mIdx++) {
-      const measure = staff.measures[mIdx];
-      const measCapacity = resolveMeasureCapacity(score, measure, mIdx);
-      const streamTimings = getMeasureItemStreamTimings(measure.items, measCapacity);
-
-      for (let itemIdx = 0; itemIdx < measure.items.length; itemIdx++) {
-        const item = measure.items[itemIdx];
-        const timing = streamTimings[itemIdx];
-        const startBeat = timing ? timing.startBeat : 0;
-        const durBeats = timing
-          ? timing.durationBeats
-          : getItemBeats(item.duration, item.isDotted, item.tuplet);
-        const itemDurationSec = durBeats * secondsPerBeat;
-        const noteStartTime = currentMeasureTime + startBeat * secondsPerBeat;
-
-        const isContinuingTie = isTiedFromPrev(staff, mIdx, itemIdx);
-        if (item.type === 'note' && !isContinuingTie) {
-          const pitches = getItemPitches(item);
-          const totalSec = item.isTied
-            ? getTiedSecs(staff, mIdx, itemIdx, secondsPerBeat)
-            : itemDurationSec;
-
-          const DYNAMIC_WAV_VELOCITIES: Record<string, number> = {
-            pp: 0.4,
-            p: 0.55,
-            mp: 0.7,
-            mf: 0.82,
-            f: 0.95,
-            ff: 1.0,
-          };
-          let vel = item.dynamic ? DYNAMIC_WAV_VELOCITIES[item.dynamic] || 0.85 : 0.85;
-          if (item.articulation === 'accent') vel = Math.min(1.0, vel * 1.25);
-
-          const soundSec =
-            item.articulation === 'staccato'
-              ? totalSec * 0.45
-              : item.articulation === 'tenuto'
-                ? totalSec * 1.0
-                : item.articulation === 'fermata'
-                  ? totalSec * 1.8
-                  : totalSec * 0.98;
-
-          pitches.forEach((p) => {
-            const freq = pitchToFrequency(p);
-            scheduleOfflineNote(
-              offlineCtx,
-              masterGain,
-              freq,
-              noteStartTime,
-              soundSec,
-              staffInstrument,
-              vel
-            );
-          });
-        }
-      }
-
-      currentMeasureTime += measCapacity * secondsPerBeat;
-    }
+  for (const note of notes) {
+    if (signal?.aborted) throw new DOMException('Exportación cancelada', 'AbortError');
+    const staffInstrument = resolveStaffInstrument(
+      score.staves[note.staffIndex],
+      isGrand,
+      instrument
+    );
+    const item = note.item;
+    const totalSec = note.endSeconds - note.startSeconds;
+    const dynamicVelocities: Record<string, number> = {
+      pp: 0.4,
+      p: 0.55,
+      mp: 0.7,
+      mf: 0.82,
+      f: 0.95,
+      ff: 1,
+    };
+    let vel = item.dynamic ? dynamicVelocities[item.dynamic] || 0.85 : 0.85;
+    if (item.articulation === 'accent') vel = Math.min(1, vel * 1.25);
+    const factor =
+      item.articulation === 'staccato'
+        ? 0.45
+        : item.articulation === 'fermata'
+          ? 1.8
+          : item.articulation === 'tenuto'
+            ? 1
+            : 0.96;
+    scheduleOfflineNote(
+      offlineCtx,
+      masterGain,
+      midiToFrequency(note.pitch),
+      note.startSeconds + 0.05,
+      totalSec * factor,
+      staffInstrument,
+      vel
+    );
   }
 
   // Render the audio graph to an AudioBuffer
   const renderedBuffer = await offlineCtx.startRendering();
+  if (signal?.aborted) throw new DOMException('Exportación cancelada', 'AbortError');
 
   // Extract left and right channels
   const left = renderedBuffer.getChannelData(0);

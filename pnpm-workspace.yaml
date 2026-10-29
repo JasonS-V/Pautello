@@ -2,3 +2,4 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   protobufjs: false
+  tesseract.js: false

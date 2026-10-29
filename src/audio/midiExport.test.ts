@@ -3,6 +3,63 @@ import { exportScoreToMidi, writeVariableLength } from './midiExport';
 import { Score } from '../types/music';
 
 describe('MIDI Export & Variable-Length Encoding', () => {
+  it('writes the performed route with local tempo and meter events', async () => {
+    const score: Score = {
+      id: 'route',
+      title: 'Ruta',
+      composer: 'Test',
+      tempo: 120,
+      timeSignature: { beats: 3, beatType: 4 },
+      keySignature: 'C',
+      createdAt: 0,
+      updatedAt: 0,
+      staves: [
+        {
+          id: 'staff',
+          name: 'Bajo',
+          clef: 'bass',
+          measures: [
+            {
+              id: 'a',
+              repeatStart: true,
+              items: [
+                {
+                  id: 'n1',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'C', octave: 4, accidental: null },
+                },
+              ],
+            },
+            {
+              id: 'b',
+              repeatEnd: true,
+              tempoBpm: 90,
+              timeSignatureChange: { beats: 4, beatType: 4 },
+              items: [
+                {
+                  id: 'n2',
+                  type: 'note',
+                  duration: 'q',
+                  pitch: { step: 'D', octave: 4, accidental: null },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const bytes = new Uint8Array(await exportScoreToMidi(score).arrayBuffer());
+    const count = (pattern: number[]) =>
+      Array.from(bytes).reduce(
+        (n, _, i) => n + (pattern.every((byte, j) => bytes[i + j] === byte) ? 1 : 0),
+        0
+      );
+    expect(count([0xff, 0x51, 0x03])).toBe(4);
+    expect(count([0xff, 0x58, 0x04])).toBe(4);
+    expect(count([0x90, 60])).toBe(2);
+    expect(count([0x90, 62])).toBe(2);
+  });
   it('correctly encodes single-byte values (0 to 127)', () => {
     expect(writeVariableLength(0)).toEqual([0x00]);
     expect(writeVariableLength(64)).toEqual([0x40]);

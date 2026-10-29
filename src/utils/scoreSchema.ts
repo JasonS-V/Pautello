@@ -5,6 +5,9 @@ import {
   Dynamic,
   KeySignature,
   Measure,
+  MetronomeBeatUnit,
+  MetronomeMark,
+  MetricEquivalence,
   NavigationMark,
   NoteDuration,
   Ornament,
@@ -26,10 +29,11 @@ import {
  * Versión del esquema de `Score`. Se sella en cada partitura normalizada para
  * poder migrarla cuando el modelo cambie.
  *
- * 1 — Estructura actual: `staves[]` > `measures[]` > `items[]`, símbolos
+ * 1 — Estructura inicial: `staves[]` > `measures[]` > `items[]`, símbolos
  *     musicales opcionales y `isGrandStaff` explícito.
+ * 2 — Roles editoriales separados y marcas de tempo/métrica conservadas.
  */
-export const SCORE_SCHEMA_VERSION = 1;
+export const SCORE_SCHEMA_VERSION = 2;
 
 /** Comprueba pertenencia sin caer en las claves heredadas de Object.prototype. */
 const hasOwn = (source: object, key: string): boolean =>
@@ -163,6 +167,32 @@ function normalizeTimeSignature(raw: unknown): TimeSignature | undefined {
   return { beats: Math.round(beats), beatType: Math.round(beatType) };
 }
 
+const BEAT_UNITS: readonly MetronomeBeatUnit[] = ['w', 'h', 'q', '8', '16'];
+function normalizeMetronomeMark(raw: unknown): MetronomeMark | undefined {
+  if (!isRecord(raw)) return undefined;
+  const beatUnit = asEnum(raw.beatUnit, BEAT_UNITS);
+  const dots = asOptionalNumber(raw.dots, 0, 2);
+  const perMinute = asOptionalNumber(raw.perMinute, 1, 400);
+  if (!beatUnit || dots === undefined || perMinute === undefined) return undefined;
+  return { beatUnit, dots: Math.round(dots), perMinute: Math.round(perMinute) };
+}
+
+function normalizeMetricEquivalence(raw: unknown): MetricEquivalence | undefined {
+  if (!isRecord(raw)) return undefined;
+  const previousUnit = asEnum(raw.previousUnit, BEAT_UNITS);
+  const nextUnit = asEnum(raw.nextUnit, BEAT_UNITS);
+  const previousDots = asOptionalNumber(raw.previousDots, 0, 2);
+  const nextDots = asOptionalNumber(raw.nextDots, 0, 2);
+  if (!previousUnit || !nextUnit || previousDots === undefined || nextDots === undefined)
+    return undefined;
+  return {
+    previousUnit,
+    previousDots: Math.round(previousDots),
+    nextUnit,
+    nextDots: Math.round(nextDots),
+  };
+}
+
 function normalizeItem(
   raw: unknown,
   makeId: (prefix: string, preferred?: string) => string
@@ -196,6 +226,8 @@ function normalizeItem(
 
   const dotted = asBoolean(raw.isDotted);
   if (dotted) item.isDotted = true;
+  if (raw.omrPlaceholder === true) item.omrPlaceholder = true;
+  if (typeof raw.isFullMeasureRest === 'boolean') item.isFullMeasureRest = raw.isFullMeasureRest;
   const tied = asBoolean(raw.isTied);
   if (tied) item.isTied = true;
 
@@ -269,6 +301,10 @@ function normalizeMeasure(
   if (barline) measure.barline = barline;
   const navigationMark = asEnum(source.navigationMark, NAVIGATION_MARKS);
   if (navigationMark) measure.navigationMark = navigationMark;
+  const navigationTargetMeasureId = asOptionalString(source.navigationTargetMeasureId);
+  if (navigationTargetMeasureId) measure.navigationTargetMeasureId = navigationTargetMeasureId;
+  const navigationExitMeasureId = asOptionalString(source.navigationExitMeasureId);
+  if (navigationExitMeasureId) measure.navigationExitMeasureId = navigationExitMeasureId;
   const rehearsalMark = asOptionalString(source.rehearsalMark);
   if (rehearsalMark) measure.rehearsalMark = rehearsalMark;
 
@@ -282,6 +318,13 @@ function normalizeMeasure(
   if (tempoText) measure.tempoText = tempoText;
   const tempoBpm = asOptionalNumber(source.tempoBpm, 30, 300);
   if (tempoBpm !== undefined) measure.tempoBpm = Math.round(tempoBpm);
+  const metronomeMark = normalizeMetronomeMark(source.metronomeMark);
+  if (metronomeMark) measure.metronomeMark = metronomeMark;
+  const metricEquivalence = normalizeMetricEquivalence(source.metricEquivalence);
+  if (metricEquivalence) measure.metricEquivalence = metricEquivalence;
+  if (source.meterGlyph === 'common') measure.meterGlyph = 'common';
+  const printedNumber = asOptionalNumber(source.printedNumber, 1, 999999);
+  if (printedNumber !== undefined) measure.printedNumber = Math.round(printedNumber);
 
   const timeSignatureChange = normalizeTimeSignature(source.timeSignatureChange);
   if (timeSignatureChange) measure.timeSignatureChange = timeSignatureChange;
@@ -365,6 +408,11 @@ export function normalizeScore(raw: unknown): Score | null {
   if (subtitle) score.subtitle = subtitle;
   const lyricist = asOptionalString(raw.lyricist);
   if (lyricist) score.lyricist = lyricist;
+  const arranger = asOptionalString(raw.arranger);
+  if (arranger) score.arranger = arranger;
+  const metronomeMark = normalizeMetronomeMark(raw.metronomeMark);
+  if (metronomeMark) score.metronomeMark = metronomeMark;
+  if (raw.meterGlyph === 'common') score.meterGlyph = 'common';
   const partName = asOptionalString(raw.partName);
   if (partName) score.partName = partName;
   const copyright = asOptionalString(raw.copyright);

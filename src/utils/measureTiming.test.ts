@@ -45,6 +45,16 @@ describe('beatsFromTimeSignature', () => {
 });
 
 describe('getMeasureTimings: cambios heredados', () => {
+  it('deriva tempo de marcas metronómicas y equivalencias cuando no hay BPM explícito', () => {
+    const score = scoreWith([
+      emptyMeasure({ metronomeMark: { beatUnit: 'h', dots: 0, perMinute: 60 } }),
+      emptyMeasure({
+        metricEquivalence: { previousUnit: '8', previousDots: 0, nextUnit: 'q', nextDots: 0 },
+      }),
+      emptyMeasure({ tempoBpm: 90 }),
+    ]);
+    expect(getMeasureTimings(score).map((t) => t.tempo)).toEqual([120, 240, 90]);
+  });
   it('usa los valores globales cuando no hay cambios locales', () => {
     const score = scoreWith([emptyMeasure(), emptyMeasure()]);
     const timings = getMeasureTimings(score);

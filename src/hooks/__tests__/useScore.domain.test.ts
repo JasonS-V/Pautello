@@ -41,6 +41,19 @@ describe('useScore: Historial reactivo, autoguardado y mutaciones de dominio', (
     expect(result.current.canRedo).toBe(false);
   });
 
+  it('confirma una importación como una sola operación reversible del editor', () => {
+    const { result } = renderHook(() => useScore());
+    const original = result.current.score;
+    act(() =>
+      result.current.loadScoreDirectly({ ...original, id: 'imported-omr', title: 'El Rey' })
+    );
+    expect(result.current.score.title).toBe('El Rey');
+    act(() => result.current.undo());
+    expect(result.current.score).toEqual(original);
+    act(() => result.current.redo());
+    expect(result.current.score.title).toBe('El Rey');
+  });
+
   it('maneja el autoguardado con debounce correctamente', () => {
     vi.useFakeTimers();
     try {
