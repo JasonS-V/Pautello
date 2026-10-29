@@ -7,6 +7,40 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [1.5.0] - 2026-10-29
+
+### 🌟 Mayor Actualización de Rendimiento, Notación y Polifonía
+
+#### Añadido y Mejorado
+
+- **Rendimiento y Arquitectura React:**
+  - Desacoplamiento total del cursor de reproducción y del motor temporal mediante `useSyncExternalStore` con estados inmutables congelados, erradicando re-renders masivos al reproducir.
+  - Modularización integral de `ScoreView`, `ScoreInspector` y hooks de mutación en submódulos especializados (`useMeasureMutations`, `useNoteMutations`, `usePlaybackState`).
+  - Reducción del bundle principal de producción en más del 50% con división de código (_code-splitting_) dinámico en modales e importaciones bajo demanda.
+
+- **Grabado Musical, Notación y Polifonía:**
+  - Soporte completo para acordes simultáneos polifónicos con edición granular por altura, octava y alteración accidental.
+  - Dos voces métricas independientes por pentagrama con plicas opuestas, cálculo de streams independientes desde el pulso 0 y alineación temporal exacta.
+  - Detección y preservación de Gran Pentagrama (_Grand Staff_) para piano y agrupaciones con continuidad de instrumentos ante compases tacet.
+  - Soporte extendido para repeticiones, marcas de navegación (`Segno`, `To Coda`, `D.S. al Coda`, `Coda`), marcas de ensayo (`[A]`, `[B]`) y calderones tanto en notas como en silencios.
+  - Jerarquía tipográfica refinada con EB Garamond para títulos líricos y JetBrains Mono para tempo y cifras de compás.
+
+- **Interoperabilidad y Audio (MusicXML 4.0, MIDI y WAV):**
+  - Exportación e importación conforme al estándar estricto de MusicXML 4.0 con soporte para marcas metronómicas, directivas de dinámica y retroceso métrico `<backup>` en voces secundarias.
+  - Motor de audio y sintetizador que recorren fielmente los saltos de navegación y tiempos locales, asegurando paridad sonora absoluta entre el reproductor en vivo, la exportación WAV y los archivos MIDI multitrack.
+
+- **Reconocimiento Óptico de Partituras (OMR) Asistido:**
+  - Flujo integrado para digitalizar partituras desde PDF o imágenes mediante inferencia neuronal local (ONNX Web WASM) y OCR sin conexión, con panel de revisión interactivo que permite corregir compases y notas de forma no destructiva con persistencia local antes de confirmar.
+
+- **Experiencia de Usuario e Interfaz Dark Studio DAW:**
+  - Interfaz profesional en modo oscuro refinada con paleta Slate/Indigo (`#0F172A`, `#111319`, `#6366F1`), iconografía Hugeicons de trazo limpio y atajos de teclado globales accesibles.
+  - Modales adaptables con prevención de desbordamientos y soporte responsive optimizado.
+
+- **Pruebas y Calidad de Código:**
+  - Suite de 71 archivos y 529 pruebas automatizadas con Vitest cubriendo dominio musical, audio, grabado, esquemas e integración.
+
+---
+
 ## [1.0.0] - 2026-09-18
 
 ### 🚀 Lanzamiento Inicial (First Release)

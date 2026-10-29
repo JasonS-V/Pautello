@@ -64,7 +64,7 @@ function createApplicationMenu() {
               title: 'Pautello Music Editor',
               message: 'Pautello - Editor Profesional de Partituras',
               detail:
-                'Versión 1.0.0\nGrabado musical profesional, audio multitrack y composición universal.\n\nCódigo y soporte: https://github.com/JasonS-V/Pautello',
+                'Versión 1.5.0\nGrabado musical profesional, audio multitrack y composición universal.\n\nCódigo y soporte: https://github.com/JasonS-V/Pautello',
             });
           },
         },
