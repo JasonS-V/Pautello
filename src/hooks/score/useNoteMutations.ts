@@ -1257,7 +1257,6 @@ export function useNoteMutations({
     [score, selectedStaffIdx, pushHistory]
   );
 
-
   return {
     insertNoteAt,
     insertRestAt,

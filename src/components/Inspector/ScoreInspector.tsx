@@ -360,7 +360,9 @@ export const ScoreInspector: React.FC<ScoreInspectorProps> = ({
             onSetHairpin={onSetHairpin}
             onSetNoteType={onSetNoteType}
             onSetFingering={onSetFingering}
-            onSetPedal={(p) => onSetPedal?.(p === 'down' ? 'start' : p === 'up' ? 'stop' : undefined)}
+            onSetPedal={(p) =>
+              onSetPedal?.(p === 'down' ? 'start' : p === 'up' ? 'stop' : undefined)
+            }
           />
         )}
 

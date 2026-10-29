@@ -375,11 +375,7 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
           )}
         </div>
         {isNote && (
-          <ToggleBtn
-            active={!!selectedItem.slur}
-            onClick={onToggleSlur}
-            className="w-full"
-          >
+          <ToggleBtn active={!!selectedItem.slur} onClick={onToggleSlur} className="w-full">
             Legato (slur)
           </ToggleBtn>
         )}
@@ -418,7 +414,11 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
             ))}
           </ul>
           {onAddPitchToChord && (
-            <div className="grid grid-cols-4 gap-1" role="group" aria-label="Agregar nota al acorde">
+            <div
+              className="grid grid-cols-4 gap-1"
+              role="group"
+              aria-label="Agregar nota al acorde"
+            >
               {[
                 { s: 3, l: '3m' },
                 { s: 4, l: '3M' },
@@ -451,7 +451,9 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
                 <ToggleBtn
                   key={a.value}
                   active={active}
-                  onClick={onSetArticulation ? () => onSetArticulation(active ? null : a.value) : undefined}
+                  onClick={
+                    onSetArticulation ? () => onSetArticulation(active ? null : a.value) : undefined
+                  }
                 >
                   {a.label}
                 </ToggleBtn>
@@ -564,7 +566,9 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
                 <ToggleBtn
                   key={f}
                   active={active}
-                  onClick={onSetFingering ? () => onSetFingering(active ? undefined : f) : undefined}
+                  onClick={
+                    onSetFingering ? () => onSetFingering(active ? undefined : f) : undefined
+                  }
                   className="tabular-nums"
                 >
                   {f}
@@ -587,7 +591,9 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
         <div className="grid grid-cols-2 gap-1" role="group" aria-label="Pedal">
           <ToggleBtn
             active={pedalValue === 'down'}
-            onClick={onSetPedal ? () => onSetPedal(pedalValue === 'down' ? null : 'down') : undefined}
+            onClick={
+              onSetPedal ? () => onSetPedal(pedalValue === 'down' ? null : 'down') : undefined
+            }
           >
             Pedal abajo
           </ToggleBtn>
@@ -606,7 +612,9 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
           <input
             type="text"
             value={selectedItem.chord ?? ''}
-            onChange={(e) => onUpdateChord?.(e.target.value.trim() === '' ? undefined : e.target.value)}
+            onChange={(e) =>
+              onUpdateChord?.(e.target.value.trim() === '' ? undefined : e.target.value)
+            }
             disabled={!onUpdateChord}
             placeholder="Ej. Am7, G/B"
             aria-label="Cifrado de acorde"
@@ -630,7 +638,11 @@ export const NoteInspectorTab: React.FC<NoteInspectorTabProps> = ({
             <ToggleBtn
               key={c}
               active={selectedItem.chord === c}
-              onClick={onUpdateChord ? () => onUpdateChord(selectedItem.chord === c ? undefined : c) : undefined}
+              onClick={
+                onUpdateChord
+                  ? () => onUpdateChord(selectedItem.chord === c ? undefined : c)
+                  : undefined
+              }
               className="font-mono"
             >
               {c}

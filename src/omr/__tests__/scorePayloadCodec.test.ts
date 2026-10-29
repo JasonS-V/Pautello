@@ -61,18 +61,53 @@ function createSampleScore(): Score {
 function createMinimalPngBytes(): Uint8Array {
   const bytes = new Uint8Array([
     // PNG signature (8 bytes)
-    137, 80, 78, 71, 13, 10, 26, 10,
+    137,
+    80,
+    78,
+    71,
+    13,
+    10,
+    26,
+    10,
     // IHDR chunk (length 13)
-    0, 0, 0, 13,
-    73, 72, 68, 82, // 'IHDR'
-    0, 0, 0, 1, // width = 1
-    0, 0, 0, 1, // height = 1
-    8, 2, 0, 0, 0, // bit depth, color type, etc.
-    144, 119, 83, 222, // CRC
+    0,
+    0,
+    0,
+    13,
+    73,
+    72,
+    68,
+    82, // 'IHDR'
+    0,
+    0,
+    0,
+    1, // width = 1
+    0,
+    0,
+    0,
+    1, // height = 1
+    8,
+    2,
+    0,
+    0,
+    0, // bit depth, color type, etc.
+    144,
+    119,
+    83,
+    222, // CRC
     // IEND chunk (length 0)
-    0, 0, 0, 0,
-    73, 69, 78, 68, // 'IEND'
-    174, 66, 96, 130, // CRC
+    0,
+    0,
+    0,
+    0,
+    73,
+    69,
+    78,
+    68, // 'IEND'
+    174,
+    66,
+    96,
+    130, // CRC
   ]);
   return bytes;
 }

@@ -73,7 +73,10 @@ export function renderTimeSignatureGlyphs(
     totalWidth -= DIGIT_GAP;
 
     return (
-      <g key={`${keyPrefix}-${subKey}`} transform={`translate(${centerX - totalWidth / 2}, ${groupY})`}>
+      <g
+        key={`${keyPrefix}-${subKey}`}
+        transform={`translate(${centerX - totalWidth / 2}, ${groupY})`}
+      >
         {items.map((item, idx) => (
           <g
             key={`${keyPrefix}-${subKey}-${idx}`}

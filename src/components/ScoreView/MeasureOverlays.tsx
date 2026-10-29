@@ -52,8 +52,18 @@ interface BarDotsProps {
 
 const BarDots: React.FC<BarDotsProps> = ({ x, staffTop, lineSpacing }) => (
   <>
-    <circle cx={x} cy={staffTop + lineSpacing * 1.5} r="2" className="fill-current text-slate-900 dark:text-slate-100" />
-    <circle cx={x} cy={staffTop + lineSpacing * 2.5} r="2" className="fill-current text-slate-900 dark:text-slate-100" />
+    <circle
+      cx={x}
+      cy={staffTop + lineSpacing * 1.5}
+      r="2"
+      className="fill-current text-slate-900 dark:text-slate-100"
+    />
+    <circle
+      cx={x}
+      cy={staffTop + lineSpacing * 2.5}
+      r="2"
+      className="fill-current text-slate-900 dark:text-slate-100"
+    />
   </>
 );
 
@@ -103,7 +113,12 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
             height={lineSpacing / 2}
             className="fill-blue-500/40 stroke-blue-600 stroke-[1.5]"
           />
-          <text x="0" y={midY - lineSpacing * 2} textAnchor="middle" className="fill-current text-[10px] font-semibold text-slate-400 dark:text-slate-600">
+          <text
+            x="0"
+            y={midY - lineSpacing * 2}
+            textAnchor="middle"
+            className="fill-current text-[10px] font-semibold text-slate-400 dark:text-slate-600"
+          >
             {`Silencio (${DURATION_LABELS[activeDuration]})`}
           </text>
         </g>
@@ -113,7 +128,13 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
     const stemUp = noteY > getStaffTopOffset(0) + lineSpacing * 2;
     return (
       <g className="pointer-events-none" opacity={opacity}>
-        <ellipse cx="0" cy={noteY} rx="5.5" ry="4" className="fill-blue-500/40 stroke-blue-600 stroke-[1.5]" />
+        <ellipse
+          cx="0"
+          cy={noteY}
+          rx="5.5"
+          ry="4"
+          className="fill-blue-500/40 stroke-blue-600 stroke-[1.5]"
+        />
         {activeDuration !== 'w' && (
           <line
             x1={stemUp ? 5.5 : -5.5}
@@ -123,7 +144,11 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
             className="stroke-blue-600 stroke-[1.5]"
           />
         )}
-        <text x="10" y={noteY - 8} className="fill-current text-[10px] font-semibold text-slate-400 dark:text-slate-600">
+        <text
+          x="10"
+          y={noteY - 8}
+          className="fill-current text-[10px] font-semibold text-slate-400 dark:text-slate-600"
+        >
           {label}
         </text>
       </g>
@@ -131,7 +156,8 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
   };
 
   const renderCursor = () => {
-    if (!playbackState.isPlaying || playbackState.currentMeasureIndex !== actualMeasureIdx) return null;
+    if (!playbackState.isPlaying || playbackState.currentMeasureIndex !== actualMeasureIdx)
+      return null;
     const cursorX = itemPositions[playbackState.currentItemIndex]?.x ?? 20;
     return (
       <line
@@ -152,7 +178,9 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
       <g className="text-slate-900 dark:text-slate-100">
         <line x1={0} y1={top - 18} x2={W} y2={top - 18} strokeWidth="1.2" className={ink} />
         <line x1={0} y1={top - 18} x2={0} y2={top - 6} strokeWidth="1.2" className={ink} />
-        {hasRepeatEnd && <line x1={W} y1={top - 18} x2={W} y2={top - 6} strokeWidth="1.2" className={ink} />}
+        {hasRepeatEnd && (
+          <line x1={W} y1={top - 18} x2={W} y2={top - 6} strokeWidth="1.2" className={ink} />
+        )}
         <text x={5} y={top - 21} className="fill-current font-serif text-[11px] font-bold">
           {voltaText}
         </text>
@@ -178,9 +206,21 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
       return (
         <g className="text-slate-900 dark:text-slate-100">
           {displayStaves.map((sIdx) => (
-            <BarDots key={sIdx} x={W - 10} staffTop={getStaffTopOffset(sIdx)} lineSpacing={lineSpacing} />
+            <BarDots
+              key={sIdx}
+              x={W - 10}
+              staffTop={getStaffTopOffset(sIdx)}
+              lineSpacing={lineSpacing}
+            />
           ))}
-          <line x1={W - 5} y1={firstTop} x2={W - 5} y2={lastBottom} strokeWidth="1" className={ink} />
+          <line
+            x1={W - 5}
+            y1={firstTop}
+            x2={W - 5}
+            y2={lastBottom}
+            strokeWidth="1"
+            className={ink}
+          />
           <line x1={W} y1={firstTop} x2={W} y2={lastBottom} strokeWidth="3.2" className={ink} />
         </g>
       );
@@ -188,7 +228,14 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
     if (barlineType === 'double') {
       return (
         <g className="text-slate-900 dark:text-slate-100">
-          <line x1={W - 3.5} y1={firstTop} x2={W - 3.5} y2={lastBottom} strokeWidth="1" className={ink} />
+          <line
+            x1={W - 3.5}
+            y1={firstTop}
+            x2={W - 3.5}
+            y2={lastBottom}
+            strokeWidth="1"
+            className={ink}
+          />
           <line x1={W} y1={firstTop} x2={W} y2={lastBottom} strokeWidth="1" className={ink} />
         </g>
       );
@@ -196,7 +243,14 @@ const MeasureOverlaysComponent: React.FC<MeasureOverlaysProps> = ({
     if (barlineType === 'final' || isLastMeasureOfScore) {
       return (
         <g className="text-slate-900 dark:text-slate-100">
-          <line x1={W - 5} y1={firstTop} x2={W - 5} y2={lastBottom} strokeWidth="1" className={ink} />
+          <line
+            x1={W - 5}
+            y1={firstTop}
+            x2={W - 5}
+            y2={lastBottom}
+            strokeWidth="1"
+            className={ink}
+          />
           <line x1={W} y1={firstTop} x2={W} y2={lastBottom} strokeWidth="3.2" className={ink} />
         </g>
       );

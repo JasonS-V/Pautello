@@ -59,9 +59,18 @@ describe('omrPreprocess', () => {
     expect(gray[1]).toBeCloseTo(1, 5);
 
     const rgba = new Uint8ClampedArray([
-      0, 0, 0, 255, // negro opaco
-      255, 255, 255, 255, // blanco opaco
-      0, 0, 0, 0, // transparente -> compone a blanco
+      0,
+      0,
+      0,
+      255, // negro opaco
+      255,
+      255,
+      255,
+      255, // blanco opaco
+      0,
+      0,
+      0,
+      0, // transparente -> compone a blanco
     ]);
     const fromRgba = rgbaToGray(rgba, 3, 1);
     expect(fromRgba[0]).toBeCloseTo(0, 4);

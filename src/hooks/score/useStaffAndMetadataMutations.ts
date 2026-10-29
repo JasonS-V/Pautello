@@ -29,11 +29,7 @@ export function useStaffAndMetadataMutations({
   const [layoutMode, setLayoutMode] = useState<'continuous' | 'paged'>('continuous');
   const [measuresPerSystem, setMeasuresPerSystem] = useState<number>(3);
 
-  const {
-    setSelectedItemId,
-    setSelectedMeasureIdx,
-    setSelectedStaffIdx,
-  } = selection;
+  const { setSelectedItemId, setSelectedMeasureIdx, setSelectedStaffIdx } = selection;
 
   const updateScoreMetadata = useCallback(
     (meta: { subtitle?: string; lyricist?: string; partName?: string; copyright?: string }) => {
@@ -303,7 +299,6 @@ export function useStaffAndMetadataMutations({
     const blank = TEMPLATES.find((t) => t.id === 'blank-score') || TEMPLATES[0];
     loadTemplate(blank);
   }, [loadTemplate]);
-
 
   return {
     viewMode,

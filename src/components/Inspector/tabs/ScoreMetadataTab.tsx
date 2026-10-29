@@ -1,18 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Layers,
-  LayoutGrid,
-  Plus,
-  Trash2,
-  Wrench,
-  Music,
-} from '../../ui/icons';
-import {
-  Score,
-  Clef,
-  TimeSignature,
-  KeySignature,
-} from '../../../types/music';
+import { Layers, LayoutGrid, Plus, Trash2, Wrench, Music } from '../../ui/icons';
+import { Score, Clef, TimeSignature, KeySignature } from '../../../types/music';
 import { KEY_SIGNATURE_DATA } from '../../../constants/pitches';
 import { CustomSelect, CustomSelectOption } from '../../ui/CustomSelect';
 
@@ -73,14 +61,19 @@ const KEY_OPTIONS: CustomSelectOption<KeySignature>[] = (
   label: KEY_SIGNATURE_DATA[k].name,
 }));
 
-const PANEL = 'rounded-lg border border-slate-200/80 dark:border-studio-border bg-slate-50 dark:bg-studio-card p-3';
-const LABEL = 'block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1';
+const PANEL =
+  'rounded-lg border border-slate-200/80 dark:border-studio-border bg-slate-50 dark:bg-studio-card p-3';
+const LABEL =
+  'block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1';
 const INPUT =
   'w-full rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface px-2 py-1.5 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500';
 const ICON_BTN =
   'inline-flex items-center justify-center rounded-md border border-slate-200/80 dark:border-studio-border bg-white dark:bg-studio-surface p-1.5 text-slate-500 dark:text-slate-300 transition-colors hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-studio-hover disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-amber-500';
 
-const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
+const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({
+  icon,
+  children,
+}) => (
   <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
     <span className="text-indigo-500 dark:text-indigo-400">{icon}</span>
     {children}
