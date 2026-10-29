@@ -4,10 +4,14 @@ import {
   CheckCircle2,
   Sparkles,
   AlertCircle,
+  AlertTriangle,
   FileText,
   RotateCcw,
   Loader2,
   Layers,
+  Undo,
+  Redo,
+  Check,
 } from '../ui/icons';
 import { OmrReviewPanel } from './OmrReviewPanel';
 import { OmrDraftEditor } from './OmrDraftEditor';
@@ -783,12 +787,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 <button
                   type="button"
                   onClick={resumeDraft}
-                  className="w-full rounded-lg border border-amber-500 p-2 text-left text-xs font-semibold"
+                  className="w-full rounded-xl border border-amber-400/70 dark:border-amber-600/50 bg-amber-50/90 hover:bg-amber-100/90 dark:bg-amber-950/30 dark:hover:bg-amber-950/50 p-3 text-left transition-colors flex items-center justify-between gap-3 group cursor-pointer"
                 >
-                  Continuar borrador OMR guardado: {availableDraft.score.title}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-amber-200/80 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                        Borrador OMR guardado
+                      </div>
+                      <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        Continuar borrador OMR guardado: {availableDraft.score.title}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 group-hover:translate-x-0.5 transition-transform shrink-0">
+                    Reanudar &rarr;
+                  </span>
                 </button>
               )}
-              <label className="block text-xs text-slate-600 dark:text-slate-300">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Páginas del PDF (opcional; máximo 20 por importación)
                 <input
                   type="text"
@@ -796,10 +815,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                   value={pdfPageRange}
                   onChange={(event) => setPdfPageRange(event.target.value)}
                   placeholder="Todas, o por ejemplo 1,3-5"
-                  className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-elevated px-3 py-2"
+                  className="mt-1 block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-elevated text-slate-900 dark:text-slate-100 px-3 py-2 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 outline-none transition-colors"
                 />
               </label>
-              <div className="text-xs text-slate-600 dark:text-slate-300">
+              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 <span id="omr-orientation-label" className="mb-1 block">
                   Orientación de la imagen o PDF
                 </span>
@@ -956,112 +975,137 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
           {reviewResult && neuralResult && previewScore && (
             <>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={undoDraft}
-                  disabled={!draftPast.current.length}
-                  className="rounded border px-2 py-1 disabled:opacity-50"
-                >
-                  Deshacer corrección
-                </button>
-                <button
-                  type="button"
-                  onClick={redoDraft}
-                  disabled={!draftFuture.current.length}
-                  className="rounded border px-2 py-1 disabled:opacity-50"
-                >
-                  Rehacer corrección
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void saveDraft().catch((error) => {
-                      setDraftSaveState('error');
-                      setErrorMessage(
-                        error instanceof Error ? error.message : 'No se pudo guardar.'
-                      );
-                    })
-                  }
-                  className="rounded border px-2 py-1"
-                >
-                  Guardar borrador
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    pushDraft();
-                    setInterventionCount((count) => count + 1);
-                    setReviewedMeasureIds(
-                      previewScore.staves.flatMap((st) => st.measures.map((m) => m.id))
-                    );
-                    if (omrSummary?.indicationPlans?.length) {
-                      setAcceptedIndications(omrSummary.indicationPlans.map((p) => p.id));
-                      setRejectedIndications([]);
+              <div className="p-2.5 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={undoDraft}
+                    disabled={!draftPast.current.length}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-studio-line bg-white dark:bg-studio-surface text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-studio-hover transition-colors disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    title="Deshacer última corrección"
+                  >
+                    <Undo className="w-3.5 h-3.5" />
+                    <span>Deshacer corrección</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={redoDraft}
+                    disabled={!draftFuture.current.length}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-studio-line bg-white dark:bg-studio-surface text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-studio-hover transition-colors disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    title="Rehacer última corrección"
+                  >
+                    <Redo className="w-3.5 h-3.5" />
+                    <span>Rehacer corrección</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void saveDraft().catch((error) => {
+                        setDraftSaveState('error');
+                        setErrorMessage(
+                          error instanceof Error ? error.message : 'No se pudo guardar.'
+                        );
+                      })
                     }
-                    const firstMeasure = previewScore.staves[0]?.measures[0];
-                    const firstMeasureId = firstMeasure?.id ?? null;
-                    const firstStaffId = previewScore.staves[0]?.id ?? null;
-                    const firstItemId = firstMeasure?.items[0]?.id ?? '';
-                    const updatedLinks = omrSummary?.sourceLinks?.length
-                      ? refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks).map((link) => {
-                          if (link.measureId) return link;
-                          const staff =
-                            previewScore.staves[link.sourcePart] ?? previewScore.staves[0];
-                          const measure =
-                            staff?.measures[
-                              Math.min(link.sourceMeasure, (staff?.measures.length ?? 1) - 1)
-                            ] ?? firstMeasure;
-                          return {
-                            ...link,
-                            staffId: staff?.id ?? firstStaffId,
-                            measureId: measure?.id ?? firstMeasureId,
-                            itemId: measure?.items[0]?.id ?? firstItemId,
-                          };
-                        })
-                      : [];
-                    if (omrSummary?.sourceLinks?.length) {
-                      setOmrSummary((current) =>
-                        current
-                          ? {
-                              ...current,
-                              sourceLinks: updatedLinks,
-                            }
-                          : current
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-studio-line bg-white dark:bg-studio-surface text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-studio-hover transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Guardar borrador</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushDraft();
+                      setInterventionCount((count) => count + 1);
+                      setReviewedMeasureIds(
+                        previewScore.staves.flatMap((st) => st.measures.map((m) => m.id))
                       );
-                    }
-                    const nextWarnings = [
-                      ...(omrSummary?.warnings.filter(
-                        (w) =>
-                          !['measure-overfull', 'measure-underfull', 'unmapped-event'].includes(
-                            w.code
-                          )
-                      ) ?? []),
-                      ...inspectOmrMeasures(previewScore, updatedLinks).warnings,
-                    ];
-                    setReviewedWarningIds(nextWarnings.map((entry, idx) => `${entry.code}-${idx}`));
-                  }}
-                  className="rounded border px-2 py-1"
-                >
-                  Marcar todo como verificado
-                </button>
-                <span aria-label="Intervenciones de revisión">
-                  {interventionCount} intervención(es)
-                </span>
-                <span role="status">
-                  {draftSaveState === 'saving'
-                    ? 'Guardando borrador…'
-                    : draftSaveState === 'saved'
-                      ? 'Borrador guardado'
-                      : draftSaveState === 'error'
-                        ? 'Error al guardar'
-                        : 'Borrador sin guardar'}
-                </span>
+                      if (omrSummary?.indicationPlans?.length) {
+                        setAcceptedIndications(omrSummary.indicationPlans.map((p) => p.id));
+                        setRejectedIndications([]);
+                      }
+                      const firstMeasure = previewScore.staves[0]?.measures[0];
+                      const firstMeasureId = firstMeasure?.id ?? null;
+                      const firstStaffId = previewScore.staves[0]?.id ?? null;
+                      const firstItemId = firstMeasure?.items[0]?.id ?? '';
+                      const updatedLinks = omrSummary?.sourceLinks?.length
+                        ? refreshOmrSourceLinks(previewScore, omrSummary.sourceLinks).map((link) => {
+                            if (link.measureId) return link;
+                            const staff =
+                              previewScore.staves[link.sourcePart] ?? previewScore.staves[0];
+                            const measure =
+                              staff?.measures[
+                                Math.min(link.sourceMeasure, (staff?.measures.length ?? 1) - 1)
+                              ] ?? firstMeasure;
+                            return {
+                              ...link,
+                              staffId: staff?.id ?? firstStaffId,
+                              measureId: measure?.id ?? firstMeasureId,
+                              itemId: measure?.items[0]?.id ?? firstItemId,
+                            };
+                          })
+                        : [];
+                      if (omrSummary?.sourceLinks?.length) {
+                        setOmrSummary((current) =>
+                          current
+                            ? {
+                                ...current,
+                                sourceLinks: updatedLinks,
+                              }
+                            : current
+                        );
+                      }
+                      const nextWarnings = [
+                        ...(omrSummary?.warnings.filter(
+                          (w) =>
+                            !['measure-overfull', 'measure-underfull', 'unmapped-event'].includes(
+                              w.code
+                            )
+                        ) ?? []),
+                        ...inspectOmrMeasures(previewScore, updatedLinks).warnings,
+                      ];
+                      setReviewedWarningIds(nextWarnings.map((entry, idx) => `${entry.code}-${idx}`));
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-emerald-300/80 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Marcar todo como verificado</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-label="Intervenciones de revisión"
+                    className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-studio-surface border border-slate-200 dark:border-studio-line text-slate-600 dark:text-slate-300"
+                  >
+                    {interventionCount} intervención(es)
+                  </span>
+                  <span
+                    role="status"
+                    className={`font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
+                      draftSaveState === 'saved'
+                        ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                        : draftSaveState === 'saving'
+                          ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 animate-pulse'
+                          : draftSaveState === 'error'
+                            ? 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300'
+                            : 'border-slate-200 dark:border-studio-line bg-white dark:bg-studio-surface text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {draftSaveState === 'saving'
+                      ? 'Guardando borrador…'
+                      : draftSaveState === 'saved'
+                        ? 'Borrador guardado'
+                        : draftSaveState === 'error'
+                          ? 'Error al guardar'
+                          : 'Borrador sin guardar'}
+                  </span>
+                </div>
               </div>
               {errorMessage && (
-                <p role="alert" className="text-xs text-red-700">
-                  {errorMessage}
-                </p>
+                <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-center gap-2 text-xs text-red-700 dark:text-red-300">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <p role="alert">{errorMessage}</p>
+                </div>
               )}
               <OmrDraftEditor
                 score={previewScore}
@@ -1087,8 +1131,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
           )}
           {reviewResult && !neuralResult && <OmrReviewPanel result={reviewResult} />}
           {neuralResult && omrSummary?.indicationPlans?.some((plan) => plan.status !== 'exact') && (
-            <fieldset className="space-y-2 rounded-xl border p-3 text-xs">
-              <legend className="font-semibold">Indicaciones por asignar o revisar</legend>
+            <fieldset className="space-y-2.5 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated p-3.5 text-xs text-slate-800 dark:text-slate-200">
+              <legend className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 px-1">
+                Indicaciones por asignar o revisar
+              </legend>
               {omrSummary.indicationPlans
                 .filter((plan) => plan.status !== 'exact')
                 .map((plan) => {
@@ -1099,13 +1145,28 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       ? 'Descartada'
                       : 'Pendiente';
                   return (
-                    <div key={plan.id} className="rounded border p-2 space-y-1">
-                      <p>
-                        {indication?.text ?? indication?.kind ?? plan.id} — {plan.reason}{' '}
-                        <strong>{decision}</strong>
-                      </p>
+                    <div
+                      key={plan.id}
+                      className="rounded-lg border border-slate-200 dark:border-studio-line bg-white dark:bg-studio-surface p-3 space-y-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-slate-800 dark:text-slate-200">
+                          {indication?.text ?? indication?.kind ?? plan.id} — {plan.reason}
+                        </p>
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            decision === 'Aceptada'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : decision === 'Descartada'
+                                ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                          }`}
+                        >
+                          <strong>{decision}</strong>
+                        </span>
+                      </div>
                       {decision === 'Pendiente' && (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-studio-line/60">
                           <select
                             aria-label={`Compás de ${indication?.text ?? indication?.kind ?? plan.id}`}
                             value={indicationTargets[plan.id] ?? plan.measureId ?? ''}
@@ -1115,7 +1176,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                                 [plan.id]: e.target.value,
                               }))
                             }
-                            className="rounded border p-1 text-slate-900"
+                            className="rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-elevated text-slate-900 dark:text-slate-100 px-2.5 py-1 text-xs focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 outline-none"
                           >
                             <option value="">Seleccionar compás</option>
                             {parsedScore?.staves.flatMap((staff) =>
@@ -1129,7 +1190,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                           <button
                             type="button"
                             onClick={() => acceptIndication(plan.id)}
-                            className="underline"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors cursor-pointer shadow-xs"
                           >
                             Aceptar asignación
                           </button>
@@ -1139,7 +1200,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                               pushDraft();
                               setRejectedIndications((ids) => [...ids, plan.id]);
                             }}
-                            className="underline"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold border border-rose-300 dark:border-rose-800/60 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
                           >
                             Descartar propuesta
                           </button>
@@ -1151,8 +1212,10 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             </fieldset>
           )}
           {neuralResult && parsedScore && (
-            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5 text-xs">
-              <legend className="font-semibold">Texto editorial propuesto</legend>
+            <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated p-3.5 text-xs">
+              <legend className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 px-1">
+                Texto editorial propuesto
+              </legend>
               {(
                 [
                   ['title', 'Título', parsedScore.title],
@@ -1175,7 +1238,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                 );
                 return (
                   <label key={field} className="space-y-1 text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold">
+                    <span className="font-semibold block">
                       {label}
                       {proposal && (
                         <span className="ml-1 font-normal opacity-75">
@@ -1188,7 +1251,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
                       value={value}
                       maxLength={120}
                       onChange={(event) => handleEditorialChange(field, event.target.value)}
-                      className="block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-surface px-2.5 py-1.5"
+                      className="block w-full rounded-lg border border-slate-300 dark:border-studio-line bg-white dark:bg-studio-surface text-slate-900 dark:text-slate-100 px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 outline-none transition-colors"
                     />
                   </label>
                 );
@@ -1196,18 +1259,21 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
             </fieldset>
           )}
           {measureAnalysis && measureAnalysis.proposals.length > 0 && (
-            <fieldset className="space-y-2 rounded-xl border border-slate-300 dark:border-studio-lineSoft p-3.5 text-xs">
-              <legend className="font-semibold">
+            <fieldset className="space-y-2 rounded-xl border border-slate-200 dark:border-studio-lineSoft bg-slate-50/70 dark:bg-studio-elevated p-3.5 text-xs text-slate-700 dark:text-slate-300">
+              <legend className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 px-1">
                 Propuestas de división — requieren comprobar la fuente
               </legend>
               {measureAnalysis.proposals.map((proposal) => {
                 const staff = parsedScore.staves.find((st) => st.id === proposal.staffId)!;
                 const number = staff.measures.findIndex((m) => m.id === proposal.measureId) + 1;
                 return (
-                  <label key={proposal.measureId} className="flex items-start gap-2 cursor-pointer">
+                  <label
+                    key={proposal.measureId}
+                    className="flex items-start gap-2.5 p-2.5 rounded-lg bg-white dark:bg-studio-surface border border-slate-200 dark:border-studio-line cursor-pointer hover:border-amber-500/40 transition-colors"
+                  >
                     <input
                       type="checkbox"
-                      className="mt-0.5"
+                      className="w-4 h-4 accent-studio-accent rounded mt-0.5"
                       checked={acceptedProposals.includes(proposal.measureId)}
                       onChange={(event) => {
                         pushDraft();
@@ -1351,11 +1417,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({ isOpen, onClose, onImp
 
           {/* Bottom confirmation buttons */}
           {neuralResult && reviewResult && (
-            <p className="rounded border border-amber-500/60 bg-amber-50 p-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
-              {reviewResult.warnings.length} aviso(s) y {reviewResult.report?.pendingEvents ?? 0}{' '}
-              evento(s) sin representación confirmada. Si cargas ahora, la partitura quedará
-              identificada como importación con pendientes hasta completar la revisión.
-            </p>
+            <div className="rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50/90 dark:bg-amber-950/40 p-3 text-xs text-amber-950 dark:text-amber-100 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                {reviewResult.warnings.length} aviso(s) y {reviewResult.report?.pendingEvents ?? 0}{' '}
+                evento(s) sin representación confirmada. Si cargas ahora, la partitura quedará
+                identificada como importación con pendientes hasta completar la revisión.
+              </p>
+            </div>
           )}
           <ModalFooter className="mt-4">
             <button
