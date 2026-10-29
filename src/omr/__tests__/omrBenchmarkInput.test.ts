@@ -8,6 +8,7 @@ import { openBenchmarkInput } from '../../../scripts/omr-benchmark-input';
 import { formatEmbeddedScoreMarker, injectScoreIntoPngBytes } from '../scorePayloadCodec';
 import { normalizeScore } from '../../utils/scoreSchema';
 
+const require = createRequire(import.meta.url);
 const folders: string[] = [];
 afterEach(() => {
   for (const folder of folders.splice(0)) fs.rmSync(folder, { recursive: true, force: true });
@@ -72,7 +73,7 @@ describe('entradas del benchmark OMR', () => {
       execFileSync(
         process.execPath,
         [
-          path.resolve('node_modules/vite-node/vite-node.mjs'),
+          require.resolve('vite-node/vite-node.mjs'),
           'scripts/omr-benchmark.ts',
           '--input',
           sourceFile,
