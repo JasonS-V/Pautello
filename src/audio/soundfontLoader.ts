@@ -99,7 +99,14 @@ class SoundfontManager {
       return this.loadingPromises.get(sfName)!;
     }
 
-    if (typeof window === 'undefined' || typeof fetch === 'undefined') {
+    if (
+      typeof window === 'undefined' ||
+      typeof fetch === 'undefined' ||
+      window.location.protocol === 'file:' ||
+      !navigator.onLine ||
+      // The shipped CSP forbids external soundfont hosts; use the local synth.
+      document.querySelector('meta[http-equiv="Content-Security-Policy"]')
+    ) {
       return false;
     }
 

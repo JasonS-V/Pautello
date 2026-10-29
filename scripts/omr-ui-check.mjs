@@ -16,10 +16,15 @@ if (!input || !out)
 assert(fs.existsSync(input), 'Falta la entrada externa requerida');
 assert(!fs.existsSync(out), 'La carpeta de salida debe ser nueva');
 const require = createRequire(import.meta.url);
-const { chromium } = require(
+const playwright = require(
   option('--playwright') ? path.resolve(option('--playwright')) : 'playwright'
 );
-const browser = await chromium.launch({ headless: true, channel: option('--channel') });
+const browserName = option('--browser') ?? 'chromium';
+assert(['chromium', 'firefox', 'webkit'].includes(browserName), 'Navegador desconocido');
+const browser = await playwright[browserName].launch({
+  headless: true,
+  ...(browserName === 'chromium' && option('--channel') ? { channel: option('--channel') } : {}),
+});
 const baseUrl = option('--url') ?? 'http://127.0.0.1:3000/';
 fs.mkdirSync(out, { recursive: true });
 
@@ -34,8 +39,12 @@ async function openImporter() {
     );
   page.setDefaultTimeout(15000);
   const errors = [];
+  const consoleErrors = [];
   const resources = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   page.on('response', (response) => {
     if (/\.onnx|\.wasm|vocab\.json|pdf\.worker|\/ocr\//.test(response.url()))
       resources.push({ url: response.url(), status: response.status() });
@@ -45,13 +54,13 @@ async function openImporter() {
   await page.getByRole('button', { name: 'Archivo', exact: true }).click();
   await page.getByText('Importar...', { exact: true }).click();
   await page.setViewportSize({ width: Number(option('--width') ?? 1280), height: 960 });
-  return { context, page, errors, resources };
+  return { context, page, errors, consoleErrors, resources };
 }
 
 try {
   const external = await openImporter();
   try {
-    const { page, errors, resources } = external;
+    const { page, errors, consoleErrors, resources } = external;
     if (option('--pages')) await page.getByLabel(/Páginas del PDF/).fill(option('--pages'));
     if (option('--rotation')) {
       await page.getByRole('button', { name: 'Orientación de la imagen o PDF' }).click();
@@ -143,6 +152,17 @@ try {
         regionViewBox = await source.getAttribute('viewBox');
         await source.scrollIntoViewIfNeeded();
       }
+      const firstEvent = dialog.locator('[aria-label="Eventos del compás"] button').first();
+      await firstEvent.click();
+      const originalEvent = await firstEvent.innerText();
+      await dialog.getByLabel('Figura del evento').selectOption('h');
+      assert.notEqual(
+        await firstEvent.innerText(),
+        originalEvent,
+        'La corrección local no cambió el evento'
+      );
+      await dialog.getByRole('button', { name: 'Deshacer corrección' }).click();
+      assert.equal(await firstEvent.innerText(), originalEvent, 'Deshacer no restauró el evento');
       assert(
         await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth),
         'El modal desborda horizontalmente'
@@ -154,6 +174,8 @@ try {
       await page.getByRole('button', { name: /Revisar lectura OMR: fuente/ }).click();
       await page.getByRole('dialog', { name: 'Revisar lectura OMR', exact: true }).waitFor();
       assert.deepEqual(errors, [], 'Errores del navegador');
+      if (option('--assert-console-clean'))
+        assert.deepEqual(consoleErrors, [], 'Errores de consola o CSP del navegador');
 
       fs.writeFileSync(
         path.join(out, 'stages.json'),
@@ -206,8 +228,10 @@ try {
             geometryEvidenceWindows,
             geometryRegionVerified: geometryWarningIndex >= 0 && regionViewBox !== null,
             reviewAfterImport: true,
+            correctionAndUndoVerified: true,
             resources,
             errors,
+            consoleErrors,
           },
           null,
           2
@@ -220,7 +244,7 @@ try {
 
   const native = await openImporter();
   try {
-    const { page, errors, resources } = native;
+    const { page, errors, consoleErrors, resources } = native;
     const score = {
       id: 'native-check',
       title: 'Restauración de control',
@@ -265,9 +289,14 @@ try {
       'La restauración nativa no debe ejecutar inferencia'
     );
     assert.deepEqual(errors, []);
+    if (option('--assert-console-clean')) assert.deepEqual(consoleErrors, []);
     fs.writeFileSync(
       path.join(out, 'native.json'),
-      JSON.stringify({ sourceType: 'lossless-metadata', resources, errors }, null, 2) + '\n'
+      JSON.stringify(
+        { sourceType: 'lossless-metadata', resources, errors, consoleErrors },
+        null,
+        2
+      ) + '\n'
     );
   } finally {
     await native.context.close();

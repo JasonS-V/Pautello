@@ -7,6 +7,7 @@ import { openBenchmarkInput } from './omr-benchmark-input';
 import { alignSequences, evaluateAgainstReference, extractReferenceEvents } from './omr-metrics';
 import type { MusicalReference } from './omr-reference-check';
 import type { OmrCorpusManifest } from './omr-corpus-check';
+import { assertOmrCiGate, assertOmrRobustnessGate } from './omr-ci-gate';
 import { preprocessPage, resizeBilinear } from '../src/omr/omrPreprocess';
 import { mapBox } from '../src/omr/omrGeometry';
 import {
@@ -47,16 +48,24 @@ const code = [
   'src/omr/omrParts.ts',
   'src/omr/omrWindows.ts',
 ].map((p) => ({ path: p, sha256: hash(fs.readFileSync(p)) }));
-const corpusPath = fs.existsSync('tasks/omr-corpus.json')
-  ? 'tasks/omr-corpus.json'
-  : 'src/omr/__tests__/fixtures/omr-corpus.json';
+const corpusPath =
+  option('--corpus') ??
+  (fs.existsSync('tasks/omr-corpus.json')
+    ? 'tasks/omr-corpus.json'
+    : 'src/omr/__tests__/fixtures/omr-corpus.json');
 const corpus: OmrCorpusManifest = JSON.parse(fs.readFileSync(corpusPath, 'utf8'));
 const acceptance = option('--acceptance') === 'true';
+const selectedIds = (option('--sample') ?? option('--samples'))?.split(/[\s,]+/);
+const publicRobustness = process.argv.includes('--public-robustness');
 const samples = corpus.entries.filter((e) =>
-  acceptance
-    ? e.id === 'el-rey-guitarron-pdf'
-    : e.partition === 'validation' &&
-      (e.id.startsWith('pdmx-line-') || e.label.referencePath || e.category.clef === 'F4')
+  publicRobustness
+    ? e.id.startsWith('pdmx-line-') && Boolean(e.label.referencePath)
+    : selectedIds
+      ? selectedIds.includes(e.id)
+      : acceptance
+        ? e.id === 'el-rey-guitarron-pdf'
+        : e.partition === 'validation' &&
+          (e.id.startsWith('pdmx-line-') || e.label.referencePath || e.category.clef === 'F4')
 );
 assert(samples.length > 0);
 const manifest = JSON.parse(fs.readFileSync('public/omr/model-manifest.json', 'utf8'));
@@ -141,7 +150,7 @@ const compareRecords = (ref: string[], pred: string[]) => {
     matchRate: m.matchRate,
   };
 };
-const rows: object[] = [];
+const rows: Parameters<typeof assertOmrCiGate>[0] = [];
 try {
   for (const sample of samples) {
     const input = await openBenchmarkInput(sample.source.path);
@@ -220,7 +229,9 @@ try {
             window: inp.window,
             normalizedToOriginal: inp.normalizedToOriginal,
           };
-          for (const decoder of variant === 'baseline' && !acceptance
+          for (const decoder of variant === 'baseline' &&
+          !acceptance &&
+          !process.argv.includes('--greedy-only')
             ? ['greedy', 'beam', 'grammar']
             : ['greedy']) {
             const begin = performance.now();
@@ -288,6 +299,20 @@ try {
           tensor.dispose();
           for (const tensor of Object.values(outputs)) tensor.dispose();
         }
+      }
+      if (!decoded.size) {
+        rows.push({
+          sample: sample.id,
+          variant,
+          decoder: 'greedy',
+          staves: prep.boxes.length,
+          systems: prep.systems.length,
+          measures: 0,
+          exact: reference ? 0 : null,
+          barMeasure: reference ? 0 : null,
+          status: 'no-staff-detected',
+        });
+        console.log(`${sample.id} ${variant}: no se detectaron pautas; exact=0`);
       }
       for (const [decoder, grouped] of decoded) {
         const lines = [...grouped.values()].map(mergeStaffWindows);
@@ -402,6 +427,8 @@ try {
       );
     }
   }
+  if (process.argv.includes('--gate')) assertOmrCiGate(rows);
+  if (process.argv.includes('--robustness-gate')) assertOmrRobustnessGate(rows);
 } finally {
   await session.release();
 }

@@ -151,7 +151,7 @@ describe('manifiesto y particiones del corpus OMR (F0.3)', () => {
     expect(() => checkCorpus(manifest)).toThrow(/clave de Sol \(G2\) como en clave de Fa \(F4\)/);
   });
 
-  it('genera variantes controladas deterministas de contraste, rotación, compresión y resolución', async () => {
+  it('genera variantes controladas deterministas de degradación visual', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omr-corpus-variants-'));
     try {
       const first = await generateControlledCorpusVariants(
@@ -168,6 +168,12 @@ describe('manifiesto y particiones del corpus OMR (F0.3)', () => {
         'compressed',
         'low-resolution',
         'short-system',
+        'uneven-contrast',
+        'broken-lines',
+        'stains',
+        'clipped-border',
+        'large-header',
+        'perspective',
         'non-music',
         'lossless-metadata',
       ]);

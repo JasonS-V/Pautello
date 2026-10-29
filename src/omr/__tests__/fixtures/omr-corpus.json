@@ -110,7 +110,7 @@
       "redistribution": "public-domain",
       "provenance": "Variante controlada de bajo contraste (tinta tenue 135..245) de pdmx-0021737310 con la misma etiqueta musical.",
       "source": {
-        "path": "tasks/local/corpus-variants/line-low-contrast.png",
+        "path": "src/omr/__tests__/fixtures/variants/line-low-contrast.png",
         "sha256": "62343b551a372b57418706bcc33f815f7f2e6073c496523b5bf6075c0d19e27c",
         "format": "png",
         "sourceType": "image",
@@ -139,7 +139,7 @@
       "redistribution": "public-domain",
       "provenance": "Variante controlada con rotación leve (+1.2 grados) de pdmx-0021737310 con la misma etiqueta musical.",
       "source": {
-        "path": "tasks/local/corpus-variants/line-rotated-1p2deg.png",
+        "path": "src/omr/__tests__/fixtures/variants/line-rotated-1p2deg.png",
         "sha256": "b507ed8ffcfa6868d94ff8318e8823f9233fece58e9aaeafaf8e159b40d75ed5",
         "format": "png",
         "sourceType": "image",
@@ -168,7 +168,7 @@
       "redistribution": "public-domain",
       "provenance": "Variante controlada con compresión JPEG (calidad 50) de pdmx-0021737310 con la misma etiqueta musical.",
       "source": {
-        "path": "tasks/local/corpus-variants/line-compressed-q50.jpg",
+        "path": "src/omr/__tests__/fixtures/variants/line-compressed-q50.jpg",
         "sha256": "77a4ac023b32c39dedb7510f9ec07ebb7894200bd8c59eed900b7cf0ec2a50a6",
         "format": "jpeg",
         "sourceType": "image",
@@ -197,7 +197,7 @@
       "redistribution": "public-domain",
       "provenance": "Variante controlada de menor resolución (0.65x, 1312x118 px) de pdmx-0021737310 con la misma etiqueta musical.",
       "source": {
-        "path": "tasks/local/corpus-variants/line-low-res-0p65x.png",
+        "path": "src/omr/__tests__/fixtures/variants/line-low-res-0p65x.png",
         "sha256": "1fdac85cde3047b357412e2f0afe23cf8c6b51cb8d9833394f3099bc93321909",
         "format": "png",
         "sourceType": "image",
@@ -226,7 +226,7 @@
       "redistribution": "public-domain",
       "provenance": "Recorte de sistema corto de dos compases (820x181 px) de pdmx-0021737310.",
       "source": {
-        "path": "tasks/local/corpus-variants/line-short-system.png",
+        "path": "src/omr/__tests__/fixtures/variants/line-short-system.png",
         "sha256": "b038861e98f5097af1fdf4d387022401fae7924bc6c477c8c25fcbe27dab7946",
         "format": "png",
         "sourceType": "image",
@@ -243,6 +243,180 @@
         "expectedSystems": 1,
         "expectedMeasures": 2,
         "expectedNotes": 5
+      }
+    },
+    {
+      "id": "pdmx-line-uneven-contrast",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Contraste desigual de izquierda a derecha; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-uneven-contrast.png",
+        "sha256": "703b54bbd0e04d06cc495bf61cfd0332bbb90c1325c0e4d14fcc085a3feebfc6",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "uneven-contrast",
+        "features": ["uneven-contrast", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
+      }
+    },
+    {
+      "id": "pdmx-line-broken-lines",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Pautas con tramos blancos interrumpidos; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-broken-lines.png",
+        "sha256": "749c4ce13193d1ba82d2e741dfd9aa915ec12075b08612de52e3ecb1abee9a54",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "broken-lines",
+        "features": ["broken-lines", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
+      }
+    },
+    {
+      "id": "pdmx-line-stains",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Manchas grises locales; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-stains.png",
+        "sha256": "1371f448419b354226bbae44f89ca696cf5d64ac4db37b6f3bf8c236726414d9",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "stains",
+        "features": ["stains", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
+      }
+    },
+    {
+      "id": "pdmx-line-clipped-border",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Borde izquierdo cortado 72 px; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-clipped-border.png",
+        "sha256": "c6018e65709697b26b45c5da3cacc0f5a11b2361efe094486424aaad146d9e33",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "clipped-border",
+        "features": ["clipped-border", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
+      }
+    },
+    {
+      "id": "pdmx-line-large-header",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Cabecera grande de 100 px; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-large-header.png",
+        "sha256": "14ded12b5348a4ba035dc11ea32151a52fc1b8bcc7d3c9d9b87a7e79d71669fa",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "large-header",
+        "features": ["large-header", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
+      }
+    },
+    {
+      "id": "pdmx-line-perspective",
+      "workId": "pdmx-0021737310",
+      "editionId": "verovio-v1",
+      "partition": "validation",
+      "availability": "public-generated",
+      "redistribution": "public-domain",
+      "provenance": "Deformación trapezoidal sintética, sin foto real; variante controlada de la misma referencia musical de dominio público.",
+      "source": {
+        "path": "src/omr/__tests__/fixtures/variants/line-perspective.png",
+        "sha256": "21c98281798c00a164235b3ed3e84158a0aa9244143e179cc8f3a8333b4b08d8",
+        "format": "png",
+        "sourceType": "image",
+        "pages": 1
+      },
+      "category": {
+        "clef": "G2",
+        "density": "low",
+        "condition": "perspective",
+        "features": ["perspective", "treble-clef"]
+      },
+      "label": {
+        "referencePath": "src/omr/__tests__/fixtures/line-reference.json",
+        "expectedStaves": 1,
+        "expectedSystems": 1,
+        "expectedMeasures": 6,
+        "expectedNotes": 9
       }
     },
     {
@@ -448,7 +622,7 @@
       "redistribution": "synthetic-mit",
       "provenance": "Página sintética sin música (bloques de cabecera y marco sin pautas de 5 líneas).",
       "source": {
-        "path": "tasks/local/corpus-variants/non-music-empty.png",
+        "path": "src/omr/__tests__/fixtures/variants/non-music-empty.png",
         "sha256": "c125afadf337e826dea4e403d52eb88416555d26f504733de48542f15c3f7a1c",
         "format": "png",
         "sourceType": "image",
@@ -477,7 +651,7 @@
       "redistribution": "synthetic-mit",
       "provenance": "SVG sintético con payload nativo PAUTELLO_V1 separado de la evaluación óptica.",
       "source": {
-        "path": "tasks/local/corpus-variants/lossless-control.svg",
+        "path": "src/omr/__tests__/fixtures/variants/lossless-control.svg",
         "sha256": "6b0596dc3beb5a4de2f38d460875dcf1e053ede1b478205e144e8c058f2f86bb",
         "format": "svg",
         "sourceType": "lossless-metadata",

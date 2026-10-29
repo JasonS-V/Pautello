@@ -16,6 +16,12 @@ export type CorpusCondition =
   | 'compressed'
   | 'low-resolution'
   | 'short-system'
+  | 'uneven-contrast'
+  | 'broken-lines'
+  | 'stains'
+  | 'clipped-border'
+  | 'large-header'
+  | 'perspective'
   | 'non-music'
   | 'lossless-metadata';
 
@@ -118,6 +124,17 @@ export async function generateControlledCorpusVariants(
 
   const outputs: Record<string, { path: string; sha256: string; width: number; height: number }> =
     {};
+  const savePng = (key: string, name: string, canvas: ReturnType<CanvasModule['createCanvas']>) => {
+    const buf = canvas.toBuffer('image/png');
+    const outPath = path.join(outDir, name);
+    fs.writeFileSync(outPath, buf);
+    outputs[key] = {
+      path: outPath,
+      sha256: sha256Hex(buf),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  };
 
   // 1. Low contrast (faint ink compressed between 135 and 245)
   {
@@ -199,6 +216,88 @@ export async function generateControlledCorpusVariants(
     const outPath = path.join(outDir, 'line-short-system.png');
     fs.writeFileSync(outPath, buf);
     outputs['short-system'] = { path: outPath, sha256: sha256Hex(buf), width: sw, height: h };
+  }
+
+  // Independent scan defects; keep the clean image and ground truth unchanged.
+  {
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const image = ctx.getImageData(0, 0, w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const strength = 0.12 + 0.75 * (x / w);
+        for (let channel = 0; channel < 3; channel++) {
+          image.data[i + channel] = Math.round(255 - (255 - image.data[i + channel]) * strength);
+        }
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    savePng('uneven-contrast', 'line-uneven-contrast.png', canvas);
+  }
+  {
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    for (const x of [530, 990, 1510])
+      for (const y of [55, 73, 91, 109, 127]) ctx.fillRect(x, y, 24, 2);
+    savePng('broken-lines', 'line-broken-lines.png', canvas);
+  }
+  {
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    ctx.fillStyle = '#777777';
+    for (const [x, y, size] of [
+      [370, 20, 6],
+      [860, 149, 10],
+      [1250, 42, 8],
+      [1850, 155, 5],
+    ]) {
+      ctx.fillRect(x, y, size, size);
+    }
+    savePng('stains', 'line-stains.png', canvas);
+  }
+  {
+    const clipped = 72;
+    const canvas = createCanvas(w - clipped, h);
+    canvas.getContext('2d').drawImage(img, clipped, 0, w - clipped, h, 0, 0, w - clipped, h);
+    savePng('clipped-border', 'line-clipped-border.png', canvas);
+  }
+  {
+    const header = 100;
+    const canvas = createCanvas(w, h + header);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h + header);
+    ctx.fillStyle = '#222222';
+    ctx.font = '64px sans-serif';
+    ctx.fillText('Partitura de prueba', 75, 72);
+    ctx.drawImage(img, 0, header);
+    savePng('large-header', 'line-large-header.png', canvas);
+  }
+  {
+    const canvas = createCanvas(w, h + 40);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h + 40);
+    for (let x = 0; x < w; x += 8) {
+      const fraction = x / w;
+      ctx.drawImage(
+        img,
+        x,
+        0,
+        Math.min(8, w - x),
+        h,
+        x,
+        20 * fraction,
+        Math.min(8, w - x),
+        h * (0.86 + 0.28 * fraction)
+      );
+    }
+    savePng('perspective', 'line-perspective.png', canvas);
   }
 
   // 6. Empty / non-music page (cover/text blocks without 5-line staves)

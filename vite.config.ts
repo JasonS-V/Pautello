@@ -48,6 +48,7 @@ const ALWAYS_PRECACHE = [
   'icon.svg',
   'icon-maskable.svg',
   'favicon.svg',
+  'theme-init.js',
 ];
 
 const OMR_RESOURCES = [
