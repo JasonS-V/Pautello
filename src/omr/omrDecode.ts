@@ -113,8 +113,10 @@ export type OmrElementIR =
       pitch?: OmrPitchIR;
       pitches?: OmrPitchIR[];
       tie?: 'start' | 'stop' | 'continue' | null;
+      tieCount?: number;
       slur?: 'start' | 'stop';
       fermata?: boolean;
+      voice?: 1 | 2;
       tokens?: string[];
       src?: OmrSourceSpan;
     }
@@ -300,8 +302,37 @@ function parsePitchToken(token: string): { step: Step; octave: number } | null {
   return { step, octave: 4 - token.length };
 }
 
+function expandCombinedKernToken(t: string): string[] {
+  if (t.startsWith('*') || t.startsWith('=') || t === '<b>' || t === 'r' || t === ';') {
+    return [t];
+  }
+  const m = t.match(/^([[\]_])?(\d+\.*)?([a-gA-G]+)(#{1,2}|-{1,2}|n)?([[\]_])?$/);
+  if (m && (m[1] || m[2] || m[4] || m[5])) {
+    const parts: string[] = [];
+    if (m[1]) parts.push(m[1]);
+    if (m[2]) parts.push(m[2]);
+    if (m[3]) parts.push(m[3]);
+    if (m[4]) parts.push(m[4]);
+    if (m[5]) parts.push(m[5]);
+    return parts;
+  }
+  return [t];
+}
+
 function classify(record: OmrTokenEvent[]): OmrElementIR | null {
-  const toks = record.map((ev) => ev.token).filter(Boolean);
+  const rawToks = record.map((ev) => ev.token).filter(Boolean);
+  if (rawToks.length === 0) return null;
+
+  const toks: string[] = [];
+  for (const t of rawToks) {
+    if (t.includes(' ') && !t.startsWith('*')) {
+      for (const sub of t.split(/\s+/).filter(Boolean)) {
+        toks.push(...expandCombinedKernToken(sub));
+      }
+    } else {
+      toks.push(...expandCombinedKernToken(t));
+    }
+  }
   if (toks.length === 0) return null;
 
   let conf = Infinity;
@@ -345,6 +376,11 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
     return el;
   }
 
+  const voiceToken = toks.find(
+    (t) => t === '*v1' || t === '*v2' || t === 'voice:1' || t === 'voice:2'
+  );
+  const voice: 1 | 2 | undefined = voiceToken ? (voiceToken.includes('2') ? 2 : 1) : undefined;
+
   let d: OmrDurationIR | null = null;
   for (const t of toks) {
     d = parseDur(t);
@@ -360,6 +396,7 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
       duration: d,
       confidence: conf,
       fermata: toks.includes(';'),
+      voice,
     };
   }
 
@@ -372,6 +409,9 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
       if (i + 1 < toks.length && toks[i + 1] in ACCIDENTALS) {
         alter = ACCIDENTALS[toks[i + 1]];
         rawAcc = toks[i + 1];
+      } else if (i > 0 && toks[i - 1] in ACCIDENTALS && (i < 2 || !parsePitchToken(toks[i - 2]))) {
+        alter = ACCIDENTALS[toks[i - 1]];
+        rawAcc = toks[i - 1];
       }
       parsedPitches.push({
         step: p.step,
@@ -385,6 +425,9 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
   if (parsedPitches.length === 0) {
     return { kind: 'unparseable', tokens: toks, confidence: conf };
   }
+
+  const tieTokens = toks.filter((t) => t.includes('[') || t.includes(']') || t.includes('_'));
+  const tieCount = tieTokens.length;
 
   const tie: 'start' | 'stop' | 'continue' | null = toks.includes('[')
     ? 'start'
@@ -407,8 +450,10 @@ function classify(record: OmrTokenEvent[]): OmrElementIR | null {
     pitch: parsedPitches[0],
     pitches: parsedPitches,
     tie,
+    tieCount,
     slur,
     fermata: toks.includes(';'),
+    voice,
   };
 }
 

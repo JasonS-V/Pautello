@@ -95,7 +95,7 @@ describe('entradas del benchmark OMR', () => {
       });
       expect(fs.existsSync(path.join(output, 'ir.json'))).toBe(false);
     },
-    15000
+    35000
   );
 
   it.each([

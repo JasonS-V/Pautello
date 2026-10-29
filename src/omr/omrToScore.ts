@@ -49,6 +49,7 @@ export interface OmrMetadataHints {
   fullText?: string;
   lyrics?: string[];
   chords?: string[];
+  isGrandStaff?: boolean;
 }
 
 export interface OmrConversionSummary {
@@ -458,6 +459,7 @@ export function convertOmrIrToScore(
               isDotted,
               tuplet,
               articulation: ev.fermata ? 'fermata' : undefined,
+              voice: ev.voice,
             },
           ];
         }
@@ -478,6 +480,7 @@ export function convertOmrIrToScore(
             isTied,
             slur: ev.slur,
             articulation: ev.fermata ? 'fermata' : undefined,
+            voice: ev.voice,
           },
         ];
       });
@@ -600,11 +603,6 @@ export function convertOmrIrToScore(
     const measures = rawMeasures;
 
     const stream = measures.flatMap((m) => m.items);
-    const pitchKey = (item: ScoreItem) =>
-      (item.pitches ?? (item.pitch ? [item.pitch] : []))
-        .map((p) => `${p.step}/${p.octave}/${p.accidental === 'n' ? '' : (p.accidental ?? '')}`)
-        .sort()
-        .join('|');
     const itemsById = new Map(stream.map((item) => [item.id, item]));
     const sourceStream = part.measures.flatMap((m, mi) =>
       m.events.map((event, ei) => ({
@@ -615,12 +613,34 @@ export function convertOmrIrToScore(
     sourceStream.forEach(({ item, event }, index) => {
       if (!item?.isTied) return;
       const next = sourceStream[index + 1]?.item;
-      if (
+      const itemPitches = item.pitches ?? (item.pitch ? [item.pitch] : []);
+      const nextPitches =
+        next?.type === 'note' ? (next.pitches ?? (next.pitch ? [next.pitch] : [])) : [];
+      const itemKeys = itemPitches.map(
+        (p) => `${p.step}/${p.octave}/${p.accidental === 'n' ? '' : (p.accidental ?? '')}`
+      );
+      const nextKeys = nextPitches.map(
+        (p) => `${p.step}/${p.octave}/${p.accidental === 'n' ? '' : (p.accidental ?? '')}`
+      );
+
+      const isSameVoice = (item.voice || 1) === (next?.voice || 1);
+      const fullPitchMatch =
         next?.type === 'note' &&
-        (item.pitches?.length ?? 1) === 1 &&
-        pitchKey(item) === pitchKey(next)
-      )
-        return;
+        isSameVoice &&
+        itemKeys.length > 0 &&
+        itemKeys.length === nextKeys.length &&
+        itemKeys.slice().sort().join('|') === nextKeys.slice().sort().join('|');
+
+      const hasFullChordTie =
+        itemKeys.length <= 1 ||
+        (event?.tieCount !== undefined && event.tieCount >= itemKeys.length);
+
+      if (fullPitchMatch && hasFullChordTie) return;
+
+      const matchingCount = isSameVoice ? itemKeys.filter((k) => nextKeys.includes(k)).length : 0;
+      const isPartialChordTie =
+        itemKeys.length > 1 && matchingCount > 0 && matchingCount < itemKeys.length;
+
       item.isTied = undefined;
       warnings.push({
         code: 'invalid-tie',
@@ -628,8 +648,9 @@ export function convertOmrIrToScore(
         provenance: 'unsupported',
         src: event?.src,
         tokens: event?.tokens,
-        message:
-          'Ligadura sin continuación adyacente de todas las alturas en la misma voz; relación conservada en el IR para revisión.',
+        message: isPartialChordTie
+          ? 'Ligadura parcial en acorde detectada: varias alturas comparten ataque y duración pero no todas continúan; la relación individual se conserva en el IR para revisión.'
+          : 'Ligadura sin continuación adyacente de todas las alturas en la misma voz; relación conservada en el IR para revisión.',
       });
     });
 
@@ -681,6 +702,14 @@ export function convertOmrIrToScore(
         'Las partes tienen distintos números de compases; no se añaden silencios para aparentar una alineación confirmada.',
     });
 
+  const isGrandStaff =
+    hints.isGrandStaff ||
+    (staves.length === 2 &&
+      (Boolean(hints.partName?.toLowerCase().includes('piano')) ||
+        staves[0].name.toLowerCase().includes('piano') ||
+        (staves[0].name.toLowerCase().includes('derecha') &&
+          staves[1].name.toLowerCase().includes('izquierda'))));
+
   const preliminaryScore: Score = {
     id: `score-omr-${Date.now()}`,
     title: hints.title?.trim() || 'Partitura Reconocida (OMR)',
@@ -694,6 +723,7 @@ export function convertOmrIrToScore(
     timeSignature,
     keySignature: initialKey,
     staves,
+    isGrandStaff: isGrandStaff ? true : undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

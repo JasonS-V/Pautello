@@ -132,6 +132,21 @@ export function OmrDraftEditor({
               ))}
             </select>
           </label>
+          {score.staves.length === 2 && (
+            <label className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                aria-label="Gran Pentagrama (Piano)"
+                checked={Boolean(score.isGrandStaff)}
+                onChange={(e) =>
+                  edit((_target, next) => {
+                    next.isGrandStaff = e.target.checked ? true : undefined;
+                  })
+                }
+              />
+              Piano (Gran Pentagrama)
+            </label>
+          )}
           <label>
             Compás
             <select
@@ -236,63 +251,144 @@ export function OmrDraftEditor({
               </select>
             </label>
             {item.type === 'note' && (
-              <>
-                <label>
-                  Altura
-                  <select
-                    aria-label="Altura del evento"
-                    value={item.pitch?.step ?? 'C'}
-                    onChange={(e) =>
-                      edit((target) => {
-                        target.pitch = { ...target.pitch!, step: e.target.value as Step };
-                        target.pitches = [target.pitch];
-                      })
-                    }
-                    className="block w-full rounded border p-1 text-slate-900"
+              <div className="col-span-full space-y-2 rounded border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 p-2.5">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <span>
+                    Alturas del evento{' '}
+                    {(item.pitches?.length ?? 1) > 1
+                      ? `(Acorde: ${item.pitches!.length} notas)`
+                      : '(Nota simple)'}
+                  </span>
+                  {(item.pitches?.length ?? 1) < 6 && (
+                    <button
+                      type="button"
+                      aria-label="Añadir nota al acorde"
+                      className="rounded bg-indigo-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-indigo-700 transition-colors"
+                      onClick={() =>
+                        edit((target) => {
+                          const current = target.pitches?.length
+                            ? [...target.pitches]
+                            : target.pitch
+                              ? [target.pitch]
+                              : [{ step: 'C' as Step, octave: 4, accidental: null }];
+                          current.push({ step: 'E' as Step, octave: 4, accidental: null });
+                          target.pitches = current;
+                          target.pitch = current[0];
+                        })
+                      }
+                    >
+                      + Añadir nota al acorde
+                    </button>
+                  )}
+                </div>
+                {(item.pitches?.length
+                  ? item.pitches
+                  : item.pitch
+                    ? [item.pitch]
+                    : [{ step: 'C' as Step, octave: 4, accidental: null }]
+                ).map((p, pIdx) => (
+                  <div
+                    key={pIdx}
+                    className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end border-t border-slate-200/80 dark:border-slate-800 pt-2 first:border-0 first:pt-0"
                   >
-                    {STEPS.map((step) => (
-                      <option key={step}>{step}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Octava
-                  <input
-                    aria-label="Octava del evento"
-                    type="number"
-                    min="1"
-                    max="7"
-                    value={item.pitch?.octave ?? 4}
-                    onChange={(e) =>
-                      edit((target) => {
-                        target.pitch = { ...target.pitch!, octave: Number(e.target.value) };
-                        target.pitches = [target.pitch];
-                      })
-                    }
-                    className="block w-full rounded border p-1 text-slate-900"
-                  />
-                </label>
-                <label>
-                  Alteración
-                  <select
-                    aria-label="Alteración del evento"
-                    value={item.pitch?.accidental ?? ''}
-                    onChange={(e) =>
-                      edit((target) => {
-                        const acc = (e.target.value || null) as '#' | 'b' | 'n' | null;
-                        target.pitch = { ...target.pitch!, accidental: acc };
-                        target.pitches = [target.pitch];
-                      })
-                    }
-                    className="block w-full rounded border p-1 text-slate-900"
-                  >
-                    <option value="">Ninguna</option>
-                    <option value="#">Sostenido (#)</option>
-                    <option value="b">Bemol (b)</option>
-                    <option value="n">Becuadro (n)</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-1">
+                    <label>
+                      <span className="text-[11px] text-slate-500">
+                        {pIdx === 0 ? 'Altura' : `Altura nota ${pIdx + 1}`}
+                      </span>
+                      <select
+                        aria-label={pIdx === 0 ? 'Altura del evento' : `Altura nota ${pIdx + 1}`}
+                        value={p.step}
+                        onChange={(e) =>
+                          edit((target) => {
+                            const current = target.pitches?.length
+                              ? [...target.pitches]
+                              : [target.pitch!];
+                            current[pIdx] = { ...current[pIdx], step: e.target.value as Step };
+                            target.pitches = current;
+                            target.pitch = current[0];
+                          })
+                        }
+                        className="block w-full rounded border p-1 text-slate-900"
+                      >
+                        {STEPS.map((step) => (
+                          <option key={step}>{step}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span className="text-[11px] text-slate-500">
+                        {pIdx === 0 ? 'Octava' : `Octava nota ${pIdx + 1}`}
+                      </span>
+                      <input
+                        aria-label={pIdx === 0 ? 'Octava del evento' : `Octava nota ${pIdx + 1}`}
+                        type="number"
+                        min="1"
+                        max="7"
+                        value={p.octave}
+                        onChange={(e) =>
+                          edit((target) => {
+                            const current = target.pitches?.length
+                              ? [...target.pitches]
+                              : [target.pitch!];
+                            current[pIdx] = { ...current[pIdx], octave: Number(e.target.value) };
+                            target.pitches = current;
+                            target.pitch = current[0];
+                          })
+                        }
+                        className="block w-full rounded border p-1 text-slate-900"
+                      />
+                    </label>
+                    <label>
+                      <span className="text-[11px] text-slate-500">
+                        {pIdx === 0 ? 'Alteración' : `Alteración nota ${pIdx + 1}`}
+                      </span>
+                      <select
+                        aria-label={
+                          pIdx === 0 ? 'Alteración del evento' : `Alteración nota ${pIdx + 1}`
+                        }
+                        value={p.accidental ?? ''}
+                        onChange={(e) =>
+                          edit((target) => {
+                            const current = target.pitches?.length
+                              ? [...target.pitches]
+                              : [target.pitch!];
+                            const acc = (e.target.value || null) as '#' | 'b' | 'n' | null;
+                            current[pIdx] = { ...current[pIdx], accidental: acc };
+                            target.pitches = current;
+                            target.pitch = current[0];
+                          })
+                        }
+                        className="block w-full rounded border p-1 text-slate-900"
+                      >
+                        <option value="">Ninguna</option>
+                        <option value="#">Sostenido (#)</option>
+                        <option value="b">Bemol (b)</option>
+                        <option value="n">Becuadro (n)</option>
+                      </select>
+                    </label>
+                    <div>
+                      {(item.pitches?.length ?? 0) > 1 && (
+                        <button
+                          type="button"
+                          aria-label={`Eliminar nota ${pIdx + 1} del acorde`}
+                          className="w-full rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300 transition-colors"
+                          onClick={() =>
+                            edit((target) => {
+                              const current = (
+                                target.pitches?.length ? [...target.pitches] : [target.pitch!]
+                              ).filter((_, i) => i !== pIdx);
+                              target.pitches = current;
+                              target.pitch = current[0];
+                            })
+                          }
+                        >
+                          Quitar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <label className="flex items-center gap-1 pt-1">
                   <input
                     type="checkbox"
                     aria-label="Ligadura de salida"
@@ -305,7 +401,7 @@ export function OmrDraftEditor({
                   />
                   Ligadura
                 </label>
-              </>
+              </div>
             )}
             <label>
               Figura
@@ -322,6 +418,22 @@ export function OmrDraftEditor({
                 {DURATIONS.map((duration) => (
                   <option key={duration}>{duration}</option>
                 ))}
+              </select>
+            </label>
+            <label>
+              Voz
+              <select
+                aria-label="Voz del evento"
+                value={item.voice ?? 1}
+                onChange={(e) =>
+                  edit((target) => {
+                    target.voice = Number(e.target.value) === 2 ? 2 : 1;
+                  })
+                }
+                className="block w-full rounded border p-1 text-slate-900"
+              >
+                <option value="1">Voz 1 (plicas arriba)</option>
+                <option value="2">Voz 2 (plicas abajo)</option>
               </select>
             </label>
             <label className="flex items-center gap-1">
