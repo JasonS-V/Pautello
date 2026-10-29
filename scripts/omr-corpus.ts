@@ -15,7 +15,10 @@ if (generateFlag) {
   console.log(JSON.stringify({ generated }, null, 2));
 }
 const inputIdx = process.argv.indexOf('--input');
-const manifestPath = inputIdx >= 0 ? process.argv[inputIdx + 1] : 'tasks/omr-corpus.json';
+const defaultManifest = fs.existsSync('tasks/omr-corpus.json')
+  ? 'tasks/omr-corpus.json'
+  : 'src/omr/__tests__/fixtures/omr-corpus.json';
+const manifestPath = inputIdx >= 0 ? process.argv[inputIdx + 1] : defaultManifest;
 if (fs.existsSync(manifestPath)) {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as OmrCorpusManifest;
   const summary = checkCorpus(manifest, { verifyDiskFiles: true });

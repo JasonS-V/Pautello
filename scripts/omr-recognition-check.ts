@@ -47,7 +47,10 @@ const code = [
   'src/omr/omrParts.ts',
   'src/omr/omrWindows.ts',
 ].map((p) => ({ path: p, sha256: hash(fs.readFileSync(p)) }));
-const corpus: OmrCorpusManifest = JSON.parse(fs.readFileSync('tasks/omr-corpus.json', 'utf8'));
+const corpusPath = fs.existsSync('tasks/omr-corpus.json')
+  ? 'tasks/omr-corpus.json'
+  : 'src/omr/__tests__/fixtures/omr-corpus.json';
+const corpus: OmrCorpusManifest = JSON.parse(fs.readFileSync(corpusPath, 'utf8'));
 const acceptance = option('--acceptance') === 'true';
 const samples = corpus.entries.filter((e) =>
   acceptance

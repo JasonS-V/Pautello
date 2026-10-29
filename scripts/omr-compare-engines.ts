@@ -28,7 +28,10 @@ assert(
 const java = path.resolve(home, 'runtime/bin/java.exe');
 assert(fs.existsSync(java), 'Falta el runtime local de Audiveris.');
 fs.mkdirSync(out, { recursive: true });
-const corpus: OmrCorpusManifest = JSON.parse(fs.readFileSync('tasks/omr-corpus.json', 'utf8'));
+const corpusPath = fs.existsSync('tasks/omr-corpus.json')
+  ? 'tasks/omr-corpus.json'
+  : 'src/omr/__tests__/fixtures/omr-corpus.json';
+const corpus: OmrCorpusManifest = JSON.parse(fs.readFileSync(corpusPath, 'utf8'));
 const samples = corpus.entries.filter((e) =>
   [
     'pdmx-line-clean',

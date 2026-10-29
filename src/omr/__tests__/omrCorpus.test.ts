@@ -100,9 +100,10 @@ function sampleManifest(): OmrCorpusManifest {
 
 describe('manifiesto y particiones del corpus OMR (F0.3)', () => {
   it('valida el manifiesto real del corpus y comprueba separación por obra y edición', () => {
-    const manifest = JSON.parse(
-      fs.readFileSync('tasks/omr-corpus.json', 'utf8')
-    ) as OmrCorpusManifest;
+    const corpusPath = fs.existsSync('tasks/omr-corpus.json')
+      ? 'tasks/omr-corpus.json'
+      : path.join(__dirname, 'fixtures/omr-corpus.json');
+    const manifest = JSON.parse(fs.readFileSync(corpusPath, 'utf8')) as OmrCorpusManifest;
     const summary = checkCorpus(manifest, { verifyDiskFiles: true });
     expect(summary.entries).toBeGreaterThanOrEqual(15);
     expect(summary.totalPages).toBeGreaterThanOrEqual(20);

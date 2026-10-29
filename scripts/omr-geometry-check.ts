@@ -19,7 +19,10 @@ import { convertOmrIrToScore } from '../src/omr/omrToScore';
 const outputIndex = process.argv.indexOf('--out');
 const output = outputIndex >= 0 ? process.argv[outputIndex + 1] : undefined;
 assert(output && !fs.existsSync(output), 'Indica --out con un archivo nuevo.');
-const corpus = JSON.parse(fs.readFileSync('tasks/omr-corpus.json', 'utf8'));
+const corpusPath = fs.existsSync('tasks/omr-corpus.json')
+  ? 'tasks/omr-corpus.json'
+  : 'src/omr/__tests__/fixtures/omr-corpus.json';
+const corpus = JSON.parse(fs.readFileSync(corpusPath, 'utf8'));
 const samples = corpus.entries.filter((e: { id: string }) => e.id.startsWith('pdmx-line-'));
 ort.env.wasm.numThreads = 1;
 const vocab = JSON.parse(fs.readFileSync('public/omr/vocab.json', 'utf8')).tokens;
